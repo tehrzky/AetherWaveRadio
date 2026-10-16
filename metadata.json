@@ -1,0 +1,6 @@
+{
+  "name": "AetherWave Studio Radio",
+  "description": "Modern dark-mode radio deck with custom stations, audio visualizer, sleep timer, Bluetooth audio sync, cloud presets & custom color themes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
