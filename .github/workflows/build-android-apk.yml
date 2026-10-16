@@ -27,6 +27,8 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ''   # ← THIS IS THE FIX
 
       - name: Install Gradle (system)
         uses: gradle/actions/setup-gradle@v3
@@ -36,7 +38,6 @@ jobs:
       - name: Generate Gradle wrapper (properly)
         run: |
           cd android
-          # Regenerates gradle-wrapper.jar, gradlew, gradlew.bat using the real Gradle
           gradle wrapper --gradle-version 8.10.2
           chmod +x gradlew
           ls -la gradle/wrapper/
