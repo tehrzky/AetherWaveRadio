@@ -24,21 +24,25 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Setup Gradle
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Gradle (system)
         uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.10.2'
 
-      - name: Prepare Gradle Wrapper & Configuration
+      - name: Generate Gradle wrapper (properly)
         run: |
-          mkdir -p android/gradle/wrapper
-          # Automatically downloads the official wrapper JAR if missing
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ] || [ ! -s android/gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Downloading official gradle-wrapper.jar..."
-            curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://repo.maven.apache.org/maven2/org/gradle/gradle-wrapper/8.10.2/gradle-wrapper-8.10.2.jar
-          fi
+          cd android
+          # Regenerates gradle-wrapper.jar, gradlew, gradlew.bat using the real Gradle
+          gradle wrapper --gradle-version 8.10.2
+          chmod +x gradlew
+          ls -la gradle/wrapper/
 
-          # Ensure root build.gradle.kts has explicit plugin versions
+      - name: Fix root build.gradle.kts
+        run: |
           cat << 'EOF' > android/build.gradle.kts
           plugins {
               id("com.android.application") version "8.7.2" apply false
@@ -47,10 +51,10 @@ jobs:
           }
           EOF
 
-          touch android/app/proguard-rules.pro
-          chmod +x ./android/gradlew
+      - name: Ensure proguard file exists
+        run: touch android/app/proguard-rules.pro
 
-      - name: Build Debug APK with Gradle
+      - name: Build Debug APK
         run: |
           cd android
           ./gradlew assembleDebug --no-daemon --stacktrace
