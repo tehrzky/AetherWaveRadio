@@ -29,13 +29,31 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      - name: Make Gradle Wrapper Executable
-        run: chmod +x ./android/gradlew
+      - name: Prepare Gradle Wrapper & Configuration
+        run: |
+          mkdir -p android/gradle/wrapper
+          # Automatically downloads the official wrapper JAR if missing
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ] || [ ! -s android/gradle/wrapper/gradle-wrapper.jar ]; then
+            echo "Downloading official gradle-wrapper.jar..."
+            curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://repo.maven.apache.org/maven2/org/gradle/gradle-wrapper/8.10.2/gradle-wrapper-8.10.2.jar
+          fi
+
+          # Ensure root build.gradle.kts has explicit plugin versions
+          cat << 'EOF' > android/build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.7.2" apply false
+              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
+              id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
+          }
+          EOF
+
+          touch android/app/proguard-rules.pro
+          chmod +x ./android/gradlew
 
       - name: Build Debug APK with Gradle
         run: |
           cd android
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
