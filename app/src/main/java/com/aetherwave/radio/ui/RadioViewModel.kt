@@ -36,11 +36,13 @@ data class RadioUiState(
     val searchQuery: String = "",
     val selectedGroup: String = "All",
     val themeColorHex: String = "#F59E0B",
-    val volume: Float = 0.85f,
     val isMuted: Boolean = false,
     val eqPreset: String = "bass",
     val syncRoomCode: String = "RADIO-A89K",
-    val isAutoSync: Boolean = false
+    val isAutoSync: Boolean = false,
+    val isEditMode: Boolean = false,
+    val isSettingsPageOpen: Boolean = false,
+    val activeSettingsTab: Int = 0
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
@@ -55,8 +57,8 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     private val _stations = MutableStateFlow<List<Station>>(loadSavedStations())
     val stations: StateFlow<List<Station>> = _stations.asStateFlow()
 
-    private val _customGroups = MutableStateFlow<List<String>>(loadSavedGroups())
-    val customGroups: StateFlow<List<String>> = _customGroups.asStateFlow()
+    private val _genres = MutableStateFlow<List<String>>(loadSavedGenres())
+    val genres: StateFlow<List<String>> = _genres.asStateFlow()
 
     private val _uiState = MutableStateFlow(
         RadioUiState(
@@ -74,12 +76,10 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         onTickVolumeFade = { ratio ->
             val target = originalVolumeBeforeFade * ratio
             mediaController?.volume = target
-            _uiState.value = _uiState.value.copy(volume = target)
         },
         onTimerFinished = {
             pausePlayback()
             mediaController?.volume = originalVolumeBeforeFade
-            _uiState.value = _uiState.value.copy(volume = originalVolumeBeforeFade)
         }
     )
 
@@ -113,16 +113,22 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         }, MoreExecutors.directExecutor())
     }
 
-    val allGroups: StateFlow<List<String>> = combine(
+    // Dynamic genre categories combining defaults and user custom genres
+    val allFilterGroups: StateFlow<List<String>> = combine(
         _stations,
-        _customGroups
-    ) { stationList, customList ->
-        val set = linkedSetOf<String>()
-        set.addAll(DefaultStations.GROUPS)
-        stationList.forEach { if (it.group.isNotBlank()) set.add(it.group) }
-        set.addAll(customList)
-        set.toList()
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DefaultStations.GROUPS)
+        _genres
+    ) { stationList, genreList ->
+        val result = linkedSetOf<String>()
+        result.add("All")
+        result.add("Favorites")
+        result.addAll(genreList)
+        stationList.forEach { s ->
+            if (s.group.isNotBlank() && s.group != "All" && s.group != "Favorites") {
+                result.add(s.group)
+            }
+        }
+        result.toList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), listOf("All", "Favorites") + DefaultStations.GROUPS.filter { it != "All" && it != "Favorites" })
 
     val filteredAndSortedStations: StateFlow<List<Station>> = combine(
         _stations,
@@ -130,7 +136,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     ) { stationsList, state ->
         var list = stationsList
 
-        // Search filter
+        // Search query filter
         if (state.searchQuery.isNotBlank()) {
             val q = state.searchQuery.trim().lowercase()
             list = list.filter {
@@ -145,7 +151,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         if (state.selectedGroup == "Favorites") {
             list = list.filter { it.isFavorite }
         } else if (state.selectedGroup != "All") {
-            list = list.filter { it.group == state.selectedGroup }
+            list = list.filter { it.group.equals(state.selectedGroup, ignoreCase = true) }
         }
 
         // Sorting
@@ -217,21 +223,14 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         playStation(currentList[prevIndex])
     }
 
-    fun setVolume(vol: Float) {
-        val clamped = vol.coerceIn(0f, 1f)
-        mediaController?.volume = clamped
-        _uiState.value = _uiState.value.copy(volume = clamped, isMuted = false)
-    }
-
     fun toggleMute() {
         val nextMuted = !_uiState.value.isMuted
         if (nextMuted) {
-            originalVolumeBeforeFade = _uiState.value.volume
             mediaController?.volume = 0f
             _uiState.value = _uiState.value.copy(isMuted = true)
         } else {
             mediaController?.volume = originalVolumeBeforeFade
-            _uiState.value = _uiState.value.copy(isMuted = false, volume = originalVolumeBeforeFade)
+            _uiState.value = _uiState.value.copy(isMuted = false)
         }
     }
 
@@ -244,6 +243,29 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             if (it.id == stationId) it.copy(isFavorite = !it.isFavorite) else it
         }
         saveStationsToPrefs(_stations.value)
+        if (_uiState.value.currentStation?.id == stationId) {
+            _uiState.value = _uiState.value.copy(
+                currentStation = _uiState.value.currentStation?.copy(
+                    isFavorite = !(_uiState.value.currentStation?.isFavorite ?: false)
+                )
+            )
+        }
+    }
+
+    fun toggleEditMode() {
+        _uiState.value = _uiState.value.copy(isEditMode = !_uiState.value.isEditMode)
+    }
+
+    fun openSettingsPage(tabIndex: Int = 0) {
+        _uiState.value = _uiState.value.copy(isSettingsPageOpen = true, activeSettingsTab = tabIndex)
+    }
+
+    fun closeSettingsPage() {
+        _uiState.value = _uiState.value.copy(isSettingsPageOpen = false)
+    }
+
+    fun setSettingsTab(index: Int) {
+        _uiState.value = _uiState.value.copy(activeSettingsTab = index)
     }
 
     fun moveStation(stationId: String, direction: String) {
@@ -255,6 +277,17 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             val temp = list[index].customOrder
             list[index].customOrder = list[targetIndex].customOrder
             list[targetIndex].customOrder = temp
+            _stations.value = list
+            saveStationsToPrefs(list)
+        }
+    }
+
+    fun reorderStation(fromIndex: Int, toIndex: Int) {
+        val list = _stations.value.sortedBy { it.customOrder }.toMutableList()
+        if (fromIndex in list.indices && toIndex in list.indices) {
+            val item = list.removeAt(fromIndex)
+            list.add(toIndex, item)
+            list.forEachIndexed { i, s -> s.customOrder = i }
             _stations.value = list
             saveStationsToPrefs(list)
         }
@@ -283,6 +316,60 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("theme_color", colorHex).apply()
     }
 
+    fun addGenre(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isNotBlank() && !_genres.value.any { it.equals(trimmed, ignoreCase = true) }) {
+            val updated = _genres.value + trimmed
+            _genres.value = updated
+            saveGenresToPrefs(updated)
+        }
+    }
+
+    fun deleteGenre(name: String) {
+        val updated = _genres.value.filter { !it.equals(name, ignoreCase = true) }
+        _genres.value = updated
+        saveGenresToPrefs(updated)
+        if (_uiState.value.selectedGroup.equals(name, ignoreCase = true)) {
+            _uiState.value = _uiState.value.copy(selectedGroup = "All")
+        }
+    }
+
+    fun moveGenre(name: String, direction: String) {
+        val list = _genres.value.toMutableList()
+        val index = list.indexOfFirst { it.equals(name, ignoreCase = true) }
+        if (index == -1) return
+        val target = if (direction == "up") index - 1 else index + 1
+        if (target in list.indices) {
+            val temp = list[index]
+            list[index] = list[target]
+            list[target] = temp
+            _genres.value = list
+            saveGenresToPrefs(list)
+        }
+    }
+
+    fun autoDetectCodec(url: String): String {
+        val lower = url.lowercase().trim()
+        return when {
+            lower.contains(".m3u8") || lower.contains("/hls") || lower.contains("format=hls") -> "HLS"
+            lower.contains(".aac") || lower.contains("format=aac") -> "AAC"
+            lower.contains(".ogg") -> "OGG"
+            else -> "MP3"
+        }
+    }
+
+    fun autoDetectBitrate(url: String): String {
+        val lower = url.lowercase()
+        return when {
+            lower.contains("320") -> "320 kbps"
+            lower.contains("256") -> "256 kbps"
+            lower.contains("192") -> "192 kbps"
+            lower.contains("96") -> "96 kbps"
+            lower.contains("64") -> "64 kbps"
+            else -> "128 kbps"
+        }
+    }
+
     fun saveStation(updated: Station) {
         val existingIndex = _stations.value.indexOfFirst { it.id == updated.id }
         val updatedList = _stations.value.toMutableList()
@@ -293,6 +380,11 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         }
         _stations.value = updatedList
         saveStationsToPrefs(updatedList)
+
+        // If newly used genre is not yet saved, add it
+        if (updated.group.isNotBlank() && updated.group != "All" && updated.group != "Favorites") {
+            addGenre(updated.group)
+        }
 
         if (_uiState.value.currentStation?.id == updated.id) {
             _uiState.value = _uiState.value.copy(currentStation = updated)
@@ -307,6 +399,16 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         val updatedList = _stations.value.filter { it.id != stationId }
         _stations.value = updatedList
         saveStationsToPrefs(updatedList)
+    }
+
+    fun setSyncRoomCode(code: String) {
+        val clean = code.trim().uppercase()
+        _uiState.value = _uiState.value.copy(syncRoomCode = clean)
+        prefs.edit().putString("sync_room", clean).apply()
+    }
+
+    fun setAutoSync(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(isAutoSync = enabled)
     }
 
     fun exportToJson(): String {
@@ -331,6 +433,13 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         }
         _stations.value = newList
         saveStationsToPrefs(newList)
+
+        // Also merge any new genres
+        imported.forEach { s ->
+            if (s.group.isNotBlank() && s.group != "All" && s.group != "Favorites") {
+                addGenre(s.group)
+            }
+        }
     }
 
     private fun loadSavedStations(): List<Station> {
@@ -352,17 +461,23 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("stations_json", json).apply()
     }
 
-    private fun loadSavedGroups(): List<String> {
-        val json = prefs.getString("custom_groups", null)
+    private fun loadSavedGenres(): List<String> {
+        val json = prefs.getString("genres_json", null)
         if (!json.isNullOrBlank()) {
             try {
                 val type = object : TypeToken<List<String>>() {}.type
-                return gson.fromJson(json, type)
+                val parsed: List<String> = gson.fromJson(json, type)
+                if (parsed.isNotEmpty()) return parsed
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
-        return emptyList()
+        return DefaultStations.GROUPS.filter { it != "All" && it != "Favorites" }
+    }
+
+    private fun saveGenresToPrefs(list: List<String>) {
+        val json = gson.toJson(list)
+        prefs.edit().putString("genres_json", json).apply()
     }
 
     override fun onCleared() {
