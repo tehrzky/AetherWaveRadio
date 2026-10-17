@@ -3,62 +3,73 @@ name: Build Android APK
 on:
   push:
     branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
   workflow_dispatch:
-
-permissions:
-  contents: write
 
 jobs:
   build:
-    name: Build Native Android APK
+    name: Build APK (Capacitor)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
+          distribution: temurin
           java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
-      - name: Prepare Gradle Wrapper & Build Configuration
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build web app
+        run: bun run build
+
+      - name: Verify dist output
+        run: ls -la dist/
+
+      - name: Install Capacitor
         run: |
-          mkdir -p android/gradle/wrapper
-          # Ensure gradle-wrapper.jar is present
-          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ] || [ ! -s android/gradle/wrapper/gradle-wrapper.jar ]; then
-            echo "Downloading official gradle-wrapper.jar..."
-            curl -sLo android/gradle/wrapper/gradle-wrapper.jar https://repo.maven.apache.org/maven2/org/gradle/gradle-wrapper/8.10.2/gradle-wrapper-8.10.2.jar
-          fi
+          bun add -d @capacitor/cli@latest
+          bun add @capacitor/core@latest @capacitor/android@latest
 
-          # Ensure root build.gradle.kts has explicit plugin versions
-          cat << 'EOF' > android/build.gradle.kts
-          plugins {
-              id("com.android.application") version "8.7.2" apply false
-              id("org.jetbrains.kotlin.android") version "2.0.21" apply false
-              id("org.jetbrains.kotlin.plugin.compose") version "2.0.21" apply false
+      - name: Write Capacitor config
+        run: |
+          cat > capacitor.config.json << 'EOF'
+          {
+            "appId": "com.aetherwave.radio",
+            "appName": "AetherWave Radio",
+            "webDir": "dist",
+            "bundledWebRuntime": false
           }
           EOF
 
-          # Ensure proguard rules file exists
-          touch android/app/proguard-rules.pro
-          chmod +x ./android/gradlew
+      - name: Add Android platform
+        run: bunx cap add android
 
-      - name: Build Debug APK with Gradle
+      - name: Sync web assets into Android
+        run: bunx cap sync android
+
+      - name: Build Debug APK
         run: |
           cd android
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Upload Debug APK Artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: aetherwave-radio-debug-apk
+          name: aetherwave-apk
           path: android/app/build/outputs/apk/debug/*.apk
-          retention-days: 14
+          retention-days: 30
