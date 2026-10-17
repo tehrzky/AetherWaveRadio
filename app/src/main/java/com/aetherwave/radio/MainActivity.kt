@@ -1897,3 +1897,26 @@ fun SleepTimerDialog(
         }
     }
 }
+
+@Composable
+fun EqualizerBarAnimation(accentColor: Color, delayMs: Int) {
+    val infiniteTransition = rememberInfiniteTransition(label = "eqBar")
+    val heightFraction by infiniteTransition.animateFloat(
+        initialValue = 0.22f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 350 + delayMs, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "eqFraction"
+    )
+
+    Box(
+        modifier = Modifier
+            .width(2.5.dp)
+            .height((13 * heightFraction).dp)
+            .clip(RoundedCornerShape(1.dp))
+            .background(accentColor)
+    )
+}
+
