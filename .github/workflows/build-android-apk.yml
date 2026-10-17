@@ -32,7 +32,6 @@ jobs:
 
       - name: Build Debug APK
         run: |
-          # Use the freshly installed system Gradle instead of the broken ./gradlew
           gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload Debug APK Artifact
