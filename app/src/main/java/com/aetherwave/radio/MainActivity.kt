@@ -2707,10 +2707,8 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
     // 12-hour format display conversion
     var isAm by remember { mutableStateOf(hour24 < 12) }
     var hour12 by remember {
-        mutableStateOf(
-            val h = hour24 % 12
-            if (h == 0) 12 else h
-        )
+        val h = hour24 % 12
+        mutableStateOf(if (h == 0) 12 else h)
     }
 
     fun updateAlarmTime(h12: Int, min: Int, am: Boolean) {
