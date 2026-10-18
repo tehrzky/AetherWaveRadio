@@ -287,6 +287,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             SortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
             SortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
             SortOption.FAVORITES_FIRST -> list.sortedByDescending { it.isFavorite }
+            SortOption.RECENTLY_PLAYED -> list
             SortOption.CUSTOM -> list
         }
 
