@@ -16,7 +16,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
-    <!-- Alarm Clock Exact Scheduling Permissions (Works when app is killed) -->
+    <!-- Alarm Clock Exact Scheduling Permissions -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -30,6 +30,7 @@
         android:label="AetherWave Radio"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.AetherWaveRadio">
 
         <activity
@@ -43,7 +44,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Media3 Foreground Service for continuous audio playback & Bluetooth headset events -->
         <service
             android:name=".service.RadioPlaybackService"
             android:exported="false"
@@ -54,7 +54,6 @@
             </intent-filter>
         </service>
 
-        <!-- BroadcastReceiver for Reliable Exact Wake-Up Alarms in Background -->
         <receiver
             android:name=".service.AlarmReceiver"
             android:exported="false">
