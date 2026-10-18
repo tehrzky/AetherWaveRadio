@@ -40,9 +40,12 @@ data class RadioUiState(
     val eqPreset: String = "bass",
     val syncRoomCode: String = "RADIO-A89K",
     val isAutoSync: Boolean = false,
-    val isEditMode: Boolean = false,
+    val isArrangeMode: Boolean = false,
     val isSettingsPageOpen: Boolean = false,
-    val activeSettingsTab: Int = 0
+    val activeSettingsTab: Int = 0,
+    val isGenreSelectMode: Boolean = false,
+    val isGenreArrangeMode: Boolean = false,
+    val selectedGenresForDeletion: Set<String> = emptySet()
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
@@ -60,8 +63,12 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     private val _genres = MutableStateFlow<List<String>>(loadSavedGenres())
     val genres: StateFlow<List<String>> = _genres.asStateFlow()
 
+    private val savedStationId = prefs.getString("last_played_station_id", null)
+    private val initialStation = _stations.value.firstOrNull { it.id == savedStationId }
+
     private val _uiState = MutableStateFlow(
         RadioUiState(
+            currentStation = initialStation,
             themeColorHex = prefs.getString("theme_color", "#F59E0B") ?: "#F59E0B",
             viewMode = ViewMode.valueOf(prefs.getString("view_mode", ViewMode.GRID.name) ?: ViewMode.GRID.name),
             sortOption = SortOption.valueOf(prefs.getString("sort_option", SortOption.CUSTOM.name) ?: SortOption.CUSTOM.name),
@@ -87,6 +94,24 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         initMediaController(application)
     }
 
+    fun syncPlayerState() {
+        mediaController?.let { player ->
+            val isPlaying = player.isPlaying
+            val currentMediaId = player.currentMediaItem?.mediaId
+            val matched = _stations.value.firstOrNull { it.id == currentMediaId }
+                ?: _uiState.value.currentStation
+                ?: _stations.value.firstOrNull { it.id == prefs.getString("last_played_station_id", null) }
+
+            if (matched != null) {
+                _uiState.value = _uiState.value.copy(
+                    currentStation = matched,
+                    isPlaying = isPlaying,
+                    isLoading = player.playbackState == Player.STATE_BUFFERING
+                )
+            }
+        }
+    }
+
     private fun initMediaController(context: Context) {
         val sessionToken = SessionToken(context, ComponentName(context, RadioPlaybackService::class.java))
         controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
@@ -106,7 +131,21 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                             isLoading = playbackState == Player.STATE_BUFFERING
                         )
                     }
+
+                    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                        val mediaId = mediaItem?.mediaId
+                        if (!mediaId.isNullOrEmpty()) {
+                            val st = _stations.value.firstOrNull { it.id == mediaId }
+                            if (st != null) {
+                                _uiState.value = _uiState.value.copy(currentStation = st)
+                                prefs.edit().putString("last_played_station_id", st.id).apply()
+                            }
+                        }
+                    }
                 })
+
+                // Restore active state if player is already streaming
+                syncPlayerState()
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -178,6 +217,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
 
         station.lastPlayedAt = System.currentTimeMillis()
         saveStationsToPrefs(_stations.value)
+        prefs.edit().putString("last_played_station_id", station.id).apply()
 
         _uiState.value = _uiState.value.copy(
             currentStation = station,
@@ -252,8 +292,8 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun toggleEditMode() {
-        _uiState.value = _uiState.value.copy(isEditMode = !_uiState.value.isEditMode)
+    fun toggleArrangeMode() {
+        _uiState.value = _uiState.value.copy(isArrangeMode = !_uiState.value.isArrangeMode)
     }
 
     fun openSettingsPage(tabIndex: Int = 0) {
@@ -261,11 +301,65 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun closeSettingsPage() {
-        _uiState.value = _uiState.value.copy(isSettingsPageOpen = false)
+        _uiState.value = _uiState.value.copy(
+            isSettingsPageOpen = false,
+            isGenreSelectMode = false,
+            isGenreArrangeMode = false,
+            selectedGenresForDeletion = emptySet()
+        )
     }
 
     fun setSettingsTab(index: Int) {
-        _uiState.value = _uiState.value.copy(activeSettingsTab = index)
+        _uiState.value = _uiState.value.copy(
+            activeSettingsTab = index,
+            isGenreSelectMode = false,
+            isGenreArrangeMode = false,
+            selectedGenresForDeletion = emptySet()
+        )
+    }
+
+    fun toggleGenreSelectMode() {
+        val next = !_uiState.value.isGenreSelectMode
+        _uiState.value = _uiState.value.copy(
+            isGenreSelectMode = next,
+            isGenreArrangeMode = false,
+            selectedGenresForDeletion = emptySet()
+        )
+    }
+
+    fun toggleGenreArrangeMode() {
+        val next = !_uiState.value.isGenreArrangeMode
+        _uiState.value = _uiState.value.copy(
+            isGenreArrangeMode = next,
+            isGenreSelectMode = false,
+            selectedGenresForDeletion = emptySet()
+        )
+    }
+
+    fun toggleGenreSelection(genre: String) {
+        val current = _uiState.value.selectedGenresForDeletion.toMutableSet()
+        if (current.contains(genre)) {
+            current.remove(genre)
+        } else {
+            current.add(genre)
+        }
+        _uiState.value = _uiState.value.copy(selectedGenresForDeletion = current)
+    }
+
+    fun deleteSelectedGenres() {
+        val toDelete = _uiState.value.selectedGenresForDeletion
+        if (toDelete.isNotEmpty()) {
+            val updated = _genres.value.filter { !toDelete.contains(it) }
+            _genres.value = updated
+            saveGenresToPrefs(updated)
+            if (toDelete.contains(_uiState.value.selectedGroup)) {
+                _uiState.value = _uiState.value.copy(selectedGroup = "All")
+            }
+            _uiState.value = _uiState.value.copy(
+                selectedGenresForDeletion = emptySet(),
+                isGenreSelectMode = false
+            )
+        }
     }
 
     fun moveStation(stationId: String, direction: String) {
@@ -434,7 +528,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         _stations.value = newList
         saveStationsToPrefs(newList)
 
-        // Also merge any new genres
+        // Merge any new genres
         imported.forEach { s ->
             if (s.group.isNotBlank() && s.group != "All" && s.group != "Favorites") {
                 addGenre(s.group)
@@ -466,8 +560,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         if (!json.isNullOrBlank()) {
             try {
                 val type = object : TypeToken<List<String>>() {}.type
-                val parsed: List<String> = gson.fromJson(json, type)
-                if (parsed.isNotEmpty()) return parsed
+                return gson.fromJson(json, type)
             } catch (e: Exception) {
                 e.printStackTrace()
             }

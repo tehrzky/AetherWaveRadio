@@ -3,6 +3,7 @@ package com.aetherwave.radio
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,9 +12,11 @@ import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +27,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.*
@@ -40,8 +44,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -75,6 +81,14 @@ class MainActivity : ComponentActivity() {
         setContent {
             val uiState by viewModel.uiState.collectAsState()
             AetherWaveRadioTheme(accentColorHex = uiState.themeColorHex) {
+                // System gesture back handler: safely closes settings or arrange mode
+                BackHandler(enabled = uiState.isSettingsPageOpen) {
+                    viewModel.closeSettingsPage()
+                }
+                BackHandler(enabled = uiState.isArrangeMode && !uiState.isSettingsPageOpen) {
+                    viewModel.toggleArrangeMode()
+                }
+
                 if (uiState.isSettingsPageOpen) {
                     SettingsScreen(
                         viewModel = viewModel,
@@ -87,6 +101,12 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-sync playback state whenever app resumes so mini player is never lost
+        viewModel.syncPlayerState()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -95,7 +115,6 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     val stations by viewModel.filteredAndSortedStations.collectAsState()
     val allFilterGroups by viewModel.allFilterGroups.collectAsState()
-    val totalStations by viewModel.stations.collectAsState()
 
     var showDeckDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf(false) }
@@ -107,16 +126,17 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
 
     Scaffold(
         topBar = {
+            // Minimalist Single-Row Top App Bar with uniform circular icon buttons
             TopAppBar(
                 title = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(vertical = 2.dp)
+                        modifier = Modifier.padding(start = 2.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(10.dp))
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
                                 .background(accentColor),
                             contentAlignment = Alignment.Center
                         ) {
@@ -124,72 +144,81 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                 Icons.Default.Radio,
                                 contentDescription = null,
                                 tint = Color(0xFF090D16),
-                                modifier = Modifier.size(19.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
                             "AetherWave Radio",
                             fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold,
+                            fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                     }
                 },
                 actions = {
-                    // Settings Page button
+                    // Uniform Circular Add Station Button
                     IconButton(
-                        onClick = { viewModel.openSettingsPage() },
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF161F32))
-                    ) {
-                        Icon(
-                            Icons.Default.Settings,
-                            contentDescription = "Studio Settings",
-                            tint = accentColor,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Single primary Add Station Button
-                    Button(
                         onClick = {
                             stationBeingEdited = null
                             showEditDialog = true
                         },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = accentColor,
-                            contentColor = Color(0xFF090D16)
-                        ),
-                        shape = RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF141C2D))
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Add Station", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Add Station",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Uniform Circular Settings Button
+                    IconButton(
+                        onClick = { viewModel.openSettingsPage() },
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF141C2D))
+                    ) {
+                        Icon(
+                            Icons.Default.Settings,
+                            contentDescription = "Studio Settings",
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = DarkBackground.copy(alpha = 0.95f)
+                    containerColor = DarkBackground
                 )
             )
         },
         bottomBar = {
-            // Material 3 True Floating Capsule Pill Mini Player
+            // True Detached Floating Capsule Pill (zero full-width container background)
             uiState.currentStation?.let { current ->
-                TrueFloatingMiniPlayerPill(
-                    station = current,
-                    isPlaying = uiState.isPlaying,
-                    isLoading = uiState.isLoading,
-                    accentColor = accentColor,
-                    onPlayPause = {
-                        if (uiState.isPlaying) viewModel.pausePlayback() else viewModel.resumePlayback()
-                    },
-                    onOpenDeck = { showDeckDialog = true }
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                ) {
+                    TrueFloatingMiniPlayerPill(
+                        station = current,
+                        isPlaying = uiState.isPlaying,
+                        isLoading = uiState.isLoading,
+                        accentColor = accentColor,
+                        onPlayPause = {
+                            if (uiState.isPlaying) viewModel.pausePlayback() else viewModel.resumePlayback()
+                        },
+                        onOpenDeck = { showDeckDialog = true }
+                    )
+                }
             }
         },
         containerColor = DarkBackground
@@ -198,9 +227,9 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(horizontal = 12.dp)
+                .padding(horizontal = 14.dp)
         ) {
-            // Row 1: Compact Search bar + Edit Mode Switch
+            // Row 1: Search Bar (Y-Centered, 44dp height) + Arrange Mode Pill (44dp height)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -208,60 +237,86 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = uiState.searchQuery,
-                    onValueChange = { viewModel.setSearchQuery(it) },
-                    placeholder = {
-                        Text("Search stations, genres, URLs...", color = Color.Gray, fontSize = 12.sp)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(17.dp))
-                    },
-                    trailingIcon = {
-                        if (uiState.searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    },
+                // Sleek Y-Centered Search Pill (44dp exact height)
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = DarkSurface,
-                        unfocusedContainerColor = DarkSurface,
-                        focusedBorderColor = accentColor,
-                        unfocusedBorderColor = Color(0x18FFFFFF),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    singleLine = true
-                )
-
-                // Edit Mode Toggle Switch
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (uiState.isEditMode) accentColor.copy(alpha = 0.18f) else DarkSurface)
-                        .border(1.dp, if (uiState.isEditMode) accentColor else Color(0x15FFFFFF), RoundedCornerShape(20.dp))
-                        .clickable { viewModel.toggleEditMode() }
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(DarkSurface)
+                        .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(28.dp))
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart
                 ) {
-                    Icon(
-                        Icons.Default.Tune,
-                        contentDescription = "Edit Mode",
-                        tint = if (uiState.isEditMode) accentColor else Color.Gray,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        if (uiState.isEditMode) "Done" else "Edit",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (uiState.isEditMode) accentColor else Color.LightGray
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Search,
+                            contentDescription = null,
+                            tint = Color.Gray,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Box(modifier = Modifier.weight(1f)) {
+                            if (uiState.searchQuery.isEmpty()) {
+                                Text(
+                                    "Search stations, genres...",
+                                    color = Color.Gray,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            BasicTextField(
+                                value = uiState.searchQuery,
+                                onValueChange = { viewModel.setSearchQuery(it) },
+                                singleLine = true,
+                                textStyle = TextStyle(
+                                    color = Color.White,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                cursorBrush = SolidColor(accentColor),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (uiState.searchQuery.isNotEmpty()) {
+                            IconButton(
+                                onClick = { viewModel.setSearchQuery("") },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = Color.Gray, modifier = Modifier.size(15.dp))
+                            }
+                        }
+                    }
+                }
+
+                // Arrange Mode Pill (44dp exact height)
+                Box(
+                    modifier = Modifier
+                        .height(44.dp)
+                        .clip(RoundedCornerShape(28.dp))
+                        .background(if (uiState.isArrangeMode) accentColor.copy(alpha = 0.2f) else DarkSurface)
+                        .border(1.dp, if (uiState.isArrangeMode) accentColor else Color(0x18FFFFFF), RoundedCornerShape(28.dp))
+                        .clickable { viewModel.toggleArrangeMode() }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (uiState.isArrangeMode) Icons.Default.Check else Icons.Default.SwapVert,
+                            contentDescription = "Arrange Mode",
+                            tint = if (uiState.isArrangeMode) accentColor else Color.LightGray,
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            if (uiState.isArrangeMode) "Done" else "Arrange",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (uiState.isArrangeMode) accentColor else Color.LightGray
+                        )
+                    }
                 }
             }
 
@@ -307,7 +362,7 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                 }
             }
 
-            // Row 3: View Mode (Grid / List) + Sort Dropdown + Live Count
+            // Row 3: Grid / List Segmented Toggle + Sort Dropdown
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -423,86 +478,169 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                         )
                     }
                 }
-
-                // Station Counter
-                Text(
-                    "${stations.size} / ${totalStations.size}",
-                    fontSize = 11.sp,
-                    color = Color.Gray,
-                    fontFamily = FontFamily.Monospace
-                )
             }
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Main Stations List or Grid
-            if (stations.isEmpty()) {
-                Box(
+            // ARRANGE MODE: Centered Reorder Frame
+            if (uiState.isArrangeMode) {
+                Card(
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center
+                        .padding(bottom = 96.dp)
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(Icons.Default.Radio, contentDescription = null, tint = Color.DarkGray, modifier = Modifier.size(52.dp))
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("No radio stations found", color = Color.Gray, fontSize = 14.sp)
-                    }
-                }
-            } else if (uiState.viewMode == ViewMode.GRID) {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(2),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 96.dp)
-                ) {
-                    itemsIndexed(stations, key = { _, s -> s.id }) { index, station ->
-                        val isCurrent = uiState.currentStation?.id == station.id
-                        StationGridCardClean(
-                            station = station,
-                            isCurrent = isCurrent,
-                            isPlaying = isCurrent && uiState.isPlaying,
-                            isEditMode = uiState.isEditMode,
-                            accentColor = accentColor,
-                            canMoveUp = index > 0,
-                            canMoveDown = index < stations.size - 1,
-                            onPlay = { viewModel.playStation(station) },
-                            onEdit = {
-                                stationBeingEdited = station
-                                showEditDialog = true
-                            },
-                            onDelete = { viewModel.deleteStation(station.id) },
-                            onMoveUp = { viewModel.moveStation(station.id, "up") },
-                            onMoveDown = { viewModel.moveStation(station.id, "down") }
-                        )
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                "Arrange Stations: ${uiState.selectedGroup}",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                "Tap arrows to reorder",
+                                fontSize = 11.sp,
+                                color = Color.Gray
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            itemsIndexed(stations, key = { _, s -> s.id }) { idx, st ->
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF141C2D)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .padding(10.dp)
+                                            .fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Station Logo
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color.Black),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (!st.logoUrl.isNullOrEmpty()) {
+                                                AsyncImage(
+                                                    model = st.logoUrl,
+                                                    contentDescription = null,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(10.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(st.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White, maxLines = 1)
+                                            Text(st.group, fontSize = 11.sp, color = Color.Gray, maxLines = 1)
+                                        }
+
+                                        // Drag / Reorder handle on right side
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { viewModel.moveStation(st.id, "up") },
+                                                enabled = idx > 0,
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", tint = if (idx > 0) Color.White else Color.DarkGray, modifier = Modifier.size(16.dp))
+                                            }
+                                            IconButton(
+                                                onClick = { viewModel.moveStation(st.id, "down") },
+                                                enabled = idx < stations.size - 1,
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(Icons.Default.ArrowDownward, contentDescription = "Move Down", tint = if (idx < stations.size - 1) Color.White else Color.DarkGray, modifier = Modifier.size(16.dp))
+                                            }
+                                            Icon(
+                                                Icons.Default.DragHandle,
+                                                contentDescription = "Reorder",
+                                                tint = accentColor,
+                                                modifier = Modifier
+                                                    .padding(start = 4.dp)
+                                                    .size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 96.dp)
-                ) {
-                    itemsIndexed(stations, key = { _, s -> s.id }) { index, station ->
-                        val isCurrent = uiState.currentStation?.id == station.id
-                        StationListCardTwoRow(
-                            station = station,
-                            isCurrent = isCurrent,
-                            isPlaying = isCurrent && uiState.isPlaying,
-                            isEditMode = uiState.isEditMode,
-                            accentColor = accentColor,
-                            canMoveUp = index > 0,
-                            canMoveDown = index < stations.size - 1,
-                            onPlay = { viewModel.playStation(station) },
-                            onEdit = {
-                                stationBeingEdited = station
-                                showEditDialog = true
-                            },
-                            onDelete = { viewModel.deleteStation(station.id) },
-                            onMoveUp = { viewModel.moveStation(station.id, "up") },
-                            onMoveDown = { viewModel.moveStation(station.id, "down") }
-                        )
+                // NORMAL VIEW: Grid or List
+                if (stations.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Radio, contentDescription = null, tint = Color.DarkGray, modifier = Modifier.size(52.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text("No radio stations found", color = Color.Gray, fontSize = 14.sp)
+                        }
+                    }
+                } else if (uiState.viewMode == ViewMode.GRID) {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 96.dp)
+                    ) {
+                        itemsIndexed(stations, key = { _, s -> s.id }) { _, station ->
+                            val isCurrent = uiState.currentStation?.id == station.id
+                            StationGridCardClean(
+                                station = station,
+                                isCurrent = isCurrent,
+                                isPlaying = isCurrent && uiState.isPlaying,
+                                accentColor = accentColor,
+                                onPlay = { viewModel.playStation(station) },
+                                onHoldEdit = {
+                                    stationBeingEdited = station
+                                    showEditDialog = true
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 96.dp)
+                    ) {
+                        itemsIndexed(stations, key = { _, s -> s.id }) { _, station ->
+                            val isCurrent = uiState.currentStation?.id == station.id
+                            StationListCardRightPlay(
+                                station = station,
+                                isCurrent = isCurrent,
+                                isPlaying = isCurrent && uiState.isPlaying,
+                                accentColor = accentColor,
+                                onPlay = { viewModel.playStation(station) },
+                                onHoldEdit = {
+                                    stationBeingEdited = station
+                                    showEditDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -559,21 +697,16 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
     }
 }
 
-// Clean Grid Card: In normal mode shows ZERO arrows or edit pencil!
+// Clean Grid Card: Hold to Edit, no ugly buttons
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun StationGridCardClean(
     station: Station,
     isCurrent: Boolean,
     isPlaying: Boolean,
-    isEditMode: Boolean,
     accentColor: Color,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     onPlay: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    onHoldEdit: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(20.dp),
@@ -587,7 +720,10 @@ fun StationGridCardClean(
                 if (isCurrent) accentColor.copy(alpha = 0.85f) else Color(0x12FFFFFF),
                 RoundedCornerShape(20.dp)
             )
-            .clickable { onPlay() }
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = onHoldEdit
+            )
     ) {
         Column(modifier = Modifier.padding(10.dp)) {
             // Artwork Box with Play Overlay & EQ Wave Bars
@@ -706,52 +842,20 @@ fun StationGridCardClean(
                     )
                 }
             }
-
-            // Edit Phase Controls: Only shown when isEditMode is true!
-            if (isEditMode) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFF141C2D))
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ArrowUpward, contentDescription = "Up", tint = if (canMoveUp) Color.White else Color.DarkGray, modifier = Modifier.size(14.dp))
-                    }
-                    IconButton(onClick = onMoveDown, enabled = canMoveDown, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.ArrowDownward, contentDescription = "Down", tint = if (canMoveDown) Color.White else Color.DarkGray, modifier = Modifier.size(14.dp))
-                    }
-                    IconButton(onClick = onEdit, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accentColor, modifier = Modifier.size(14.dp))
-                    }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(24.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
-                    }
-                }
-            }
         }
     }
 }
 
-// Clean Two-Row List Card (No word-wrapping overflow, compact height!)
+// List Card: Logo on left, Name/Genre in center, PLAY BUTTON ON THE RIGHT! Hold to edit.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun StationListCardTwoRow(
+fun StationListCardRightPlay(
     station: Station,
     isCurrent: Boolean,
     isPlaying: Boolean,
-    isEditMode: Boolean,
     accentColor: Color,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     onPlay: () -> Unit,
-    onEdit: () -> Unit,
-    onDelete: () -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    onHoldEdit: () -> Unit
 ) {
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -765,7 +869,10 @@ fun StationListCardTwoRow(
                 if (isCurrent) accentColor.copy(alpha = 0.85f) else Color(0x10FFFFFF),
                 RoundedCornerShape(14.dp)
             )
-            .clickable { onPlay() }
+            .combinedClickable(
+                onClick = onPlay,
+                onLongClick = onHoldEdit
+            )
     ) {
         Row(
             modifier = Modifier
@@ -773,28 +880,10 @@ fun StationListCardTwoRow(
                 .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Play Button
+            // Logo first on the left
             Box(
                 modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(if (isCurrent && isPlaying) accentColor else Color(0xFF1E283C)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (isCurrent && isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    tint = if (isCurrent && isPlaying) Color(0xFF090D16) else Color.White,
-                    modifier = Modifier.size(17.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            // Thumbnail Squircle
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .clip(RoundedCornerShape(10.dp))
                     .background(Color(0xFF080C14)),
                 contentAlignment = Alignment.Center
@@ -815,7 +904,6 @@ fun StationListCardTwoRow(
 
             // Two-Row Details: Row 1 = Name, Row 2 = Genre + Codec
             Column(modifier = Modifier.weight(1f)) {
-                // Row 1: Station Name alone (No wrapping!)
                 Text(
                     text = station.name,
                     fontWeight = FontWeight.Bold,
@@ -825,7 +913,6 @@ fun StationListCardTwoRow(
                     overflow = TextOverflow.Ellipsis
                 )
 
-                // Row 2: Genre/Group name on its own row below!
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -846,28 +933,29 @@ fun StationListCardTwoRow(
                 }
             }
 
-            // Edit Mode Action Buttons (only visible when Edit Mode switch is ON)
-            if (isEditMode) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(onClick = onMoveUp, enabled = canMoveUp, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.ArrowUpward, contentDescription = "Up", tint = if (canMoveUp) Color.White else Color.DarkGray, modifier = Modifier.size(14.dp))
-                    }
-                    IconButton(onClick = onMoveDown, enabled = canMoveDown, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.ArrowDownward, contentDescription = "Down", tint = if (canMoveDown) Color.White else Color.DarkGray, modifier = Modifier.size(14.dp))
-                    }
-                    IconButton(onClick = onEdit, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = accentColor, modifier = Modifier.size(14.dp))
-                    }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
-                    }
-                }
+            Spacer(modifier = Modifier.width(8.dp))
+
+            // Play Button on the MOST RIGHT SIDE!
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(if (isCurrent && isPlaying) accentColor else Color(0xFF1E283C))
+                    .clickable { onPlay() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    if (isCurrent && isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = if (isCurrent && isPlaying) Color(0xFF090D16) else Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }
 }
 
-// True Floating Capsule Pill Mini Player
+// True Detached Floating Capsule Pill Mini Player
 @Composable
 fun TrueFloatingMiniPlayerPill(
     station: Station,
@@ -877,101 +965,95 @@ fun TrueFloatingMiniPlayerPill(
     onPlayPause: () -> Unit,
     onOpenDeck: () -> Unit
 ) {
-    Box(
+    Card(
+        shape = CircleShape,
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF101522)),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp)
+            .border(1.dp, Color(0x28FFFFFF), CircleShape)
+            .shadow(20.dp, CircleShape)
+            .clickable { onOpenDeck() }
     ) {
-        Card(
-            shape = RoundedCornerShape(32.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF101522)),
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, Color(0x24FFFFFF), RoundedCornerShape(32.dp))
-                .shadow(20.dp, RoundedCornerShape(32.dp))
-                .clickable { onOpenDeck() }
+                .padding(horizontal = 10.dp, vertical = 7.dp)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
+            // Circular Logo with live equalizer overlay
+            Box(
                 modifier = Modifier
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF090D16))
+                    .border(1.dp, Color(0x18FFFFFF), CircleShape),
+                contentAlignment = Alignment.Center
             ) {
-                // Logo with animated live equalizer overlay
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF090D16))
-                        .border(1.dp, Color(0x18FFFFFF), CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (!station.logoUrl.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = station.logoUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
-                    }
+                if (!station.logoUrl.isNullOrEmpty()) {
+                    AsyncImage(
+                        model = station.logoUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                }
 
-                    if (isPlaying) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = 0.45f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(1.5.dp), verticalAlignment = Alignment.Bottom) {
-                                EqualizerBarAnimation(accentColor = accentColor, delayMs = 0)
-                                EqualizerBarAnimation(accentColor = accentColor, delayMs = 150)
-                                EqualizerBarAnimation(accentColor = accentColor, delayMs = 300)
-                            }
+                if (isPlaying) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.45f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(1.5.dp), verticalAlignment = Alignment.Bottom) {
+                            EqualizerBarAnimation(accentColor = accentColor, delayMs = 0)
+                            EqualizerBarAnimation(accentColor = accentColor, delayMs = 150)
+                            EqualizerBarAnimation(accentColor = accentColor, delayMs = 300)
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-                // Station Title & Genre
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        station.name,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        color = Color.White,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+            // Station Title & Genre
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    station.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    station.group,
+                    fontSize = 10.sp,
+                    color = Color.Gray,
+                    maxLines = 1
+                )
+            }
+
+            // ONLY ONE BUTTON: Big tactile Play / Pause Circle on right
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(accentColor)
+                    .clickable { onPlayPause() },
+                contentAlignment = Alignment.Center
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color(0xFF090D16), strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                } else {
+                    Icon(
+                        if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        tint = Color(0xFF090D16),
+                        modifier = Modifier.size(24.dp)
                     )
-                    Text(
-                        "${station.group} • ${station.codec}",
-                        fontSize = 10.sp,
-                        color = Color.Gray,
-                        maxLines = 1
-                    )
-                }
-
-                // ONLY ONE BUTTON: Big tactile Play / Pause Circle
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(accentColor)
-                        .clickable { onPlayPause() },
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (isLoading) {
-                        CircularProgressIndicator(color = Color(0xFF090D16), strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
-                    } else {
-                        Icon(
-                            if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = null,
-                            tint = Color(0xFF090D16),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
                 }
             }
         }
@@ -1359,6 +1441,7 @@ fun StationAddEditDialog(
     var selectedGenre by remember { mutableStateOf(station?.group ?: (allGenres.firstOrNull() ?: "Lo-Fi & Chill")) }
     var newGenreInput by remember { mutableStateOf("") }
     var isEnteringNewGenre by remember { mutableStateOf(false) }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
     // Android Local Media Picker for station logo
     val launcher = rememberLauncherForActivityResult(
@@ -1513,7 +1596,7 @@ fun StationAddEditDialog(
                 ) {
                     if (station != null) {
                         TextButton(
-                            onClick = { onDelete(station.id) },
+                            onClick = { showDeleteConfirm = true },
                             colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFEF4444))
                         ) {
                             Text("Delete")
@@ -1553,6 +1636,32 @@ fun StationAddEditDialog(
             }
         }
     }
+
+    // Delete Confirmation Safeguard Dialog
+    if (showDeleteConfirm && station != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("Delete Station?", fontWeight = FontWeight.Bold, color = Color.White) },
+            text = { Text("Are you sure you want to delete \"${station.name}\"? This action cannot be undone.", color = Color.LightGray) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete(station.id)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF141C2D)
+        )
+    }
 }
 
 // Settings Dedicated Page (Full Screen with Genre Manager, Themes, Cloud Sync, and Bluetooth)
@@ -1565,7 +1674,9 @@ fun SettingsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val genres by viewModel.genres.collectAsState()
+    val allStations by viewModel.stations.collectAsState()
     var newGenreText by remember { mutableStateOf("") }
+    var showBatchDeleteConfirm by remember { mutableStateOf(false) }
 
     val tabs = listOf("Genres", "Themes", "Cloud Sync", "Bluetooth")
 
@@ -1585,219 +1696,316 @@ fun SettingsScreen(
         },
         containerColor = DarkBackground
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp)
-        ) {
-            // Settings Navigation Tabs
-            Row(
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp)
             ) {
-                tabs.forEachIndexed { idx, label ->
-                    val isSel = uiState.activeSettingsTab == idx
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isSel) accentColor else Color(0xFF141C2D))
-                            .clickable { viewModel.setSettingsTab(idx) }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            label,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isSel) Color(0xFF090D16) else Color.LightGray
-                        )
+                // Settings Navigation Tabs
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    tabs.forEachIndexed { idx, label ->
+                        val isSel = uiState.activeSettingsTab == idx
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(if (isSel) accentColor else Color(0xFF141C2D))
+                                .clickable { viewModel.setSettingsTab(idx) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) Color(0xFF090D16) else Color.LightGray
+                            )
+                        }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-            when (uiState.activeSettingsTab) {
-                0 -> { // GENRE MANAGER
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text("Manage Genres & Categories", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("Add, reorder, or delete station groups. Used everywhere in the app.", fontSize = 11.sp, color = Color.Gray)
-
-                        // Add Genre Input
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                when (uiState.activeSettingsTab) {
+                    0 -> { // GENRE MANAGER: Arrange & Select modes
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            OutlinedTextField(
-                                value = newGenreText,
-                                onValueChange = { newGenreText = it },
-                                placeholder = { Text("New genre name...", fontSize = 12.sp) },
-                                singleLine = true,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Button(
-                                onClick = {
-                                    if (newGenreText.isNotBlank()) {
-                                        viewModel.addGenre(newGenreText.trim())
-                                        newGenreText = ""
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("+ Add")
+                                Column {
+                                    Text("Manage Genres", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text("Add, reorder, or batch delete categories", fontSize = 11.sp, color = Color.Gray)
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    // Arrange Button
+                                    Button(
+                                        onClick = { viewModel.toggleGenreArrangeMode() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (uiState.isGenreArrangeMode) accentColor else Color(0xFF182238),
+                                            contentColor = if (uiState.isGenreArrangeMode) Color(0xFF090D16) else Color.White
+                                        ),
+                                        shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(if (uiState.isGenreArrangeMode) "Done" else "Arrange", fontSize = 11.sp)
+                                    }
+
+                                    // Select / Batch Delete Button
+                                    Button(
+                                        onClick = { viewModel.toggleGenreSelectMode() },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (uiState.isGenreSelectMode) Color(0xFFEF4444) else Color(0xFF182238),
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(if (uiState.isGenreSelectMode) "Cancel" else "Select", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+
+                            // Add Genre Input
+                            if (!uiState.isGenreSelectMode && !uiState.isGenreArrangeMode) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = newGenreText,
+                                        onValueChange = { newGenreText = it },
+                                        placeholder = { Text("New genre name...", fontSize = 12.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Button(
+                                        onClick = {
+                                            if (newGenreText.isNotBlank()) {
+                                                viewModel.addGenre(newGenreText.trim())
+                                                newGenreText = ""
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))
+                                    ) {
+                                        Text("+ Add")
+                                    }
+                                }
+                            }
+
+                            // Genres List
+                            genres.forEachIndexed { index, g ->
+                                val isSelected = uiState.selectedGenresForDeletion.contains(g)
+
+                                Card(
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(enabled = uiState.isGenreSelectMode) {
+                                            viewModel.toggleGenreSelection(g)
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                                            .fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(g, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
+
+                                        if (uiState.isGenreArrangeMode) {
+                                            // Reorder handle on right side
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(onClick = { viewModel.moveGenre(g, "up") }, enabled = index > 0, modifier = Modifier.size(28.dp)) {
+                                                    Icon(Icons.Default.ArrowUpward, contentDescription = "Up", tint = if (index > 0) Color.White else Color.DarkGray, modifier = Modifier.size(16.dp))
+                                                }
+                                                IconButton(onClick = { viewModel.moveGenre(g, "down") }, enabled = index < genres.size - 1, modifier = Modifier.size(28.dp)) {
+                                                    Icon(Icons.Default.ArrowDownward, contentDescription = "Down", tint = if (index < genres.size - 1) Color.White else Color.DarkGray, modifier = Modifier.size(16.dp))
+                                                }
+                                                Icon(Icons.Default.DragHandle, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
+                                            }
+                                        } else if (uiState.isGenreSelectMode) {
+                                            // Selection Circle on right side
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(24.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isSelected) Color(0xFFEF4444) else Color.Transparent)
+                                                    .border(2.dp, if (isSelected) Color(0xFFEF4444) else Color.Gray, CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (isSelected) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(80.dp))
+                        }
+                    }
+                    1 -> { // THEMES & COLOR PICKER
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("10 Curated M3 Theme Presets", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Changes the glowing studio accents and controls dynamically.", fontSize = 11.sp, color = Color.Gray)
+
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.height(280.dp)
+                            ) {
+                                itemsIndexed(DefaultStations.THEMES) { _, theme ->
+                                    val color = parseHexColor(theme.colorHex)
+                                    val isCurrent = uiState.themeColorHex.equals(theme.colorHex, ignoreCase = true)
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isCurrent) Color(0xFF1E283C) else Color(0xFF0A0F1A))
+                                            .border(1.dp, if (isCurrent) color else Color(0x10FFFFFF), RoundedCornerShape(12.dp))
+                                            .clickable { viewModel.setThemeColor(theme.colorHex) }
+                                            .padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(color)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(theme.name, fontSize = 11.sp, color = Color.White, maxLines = 1)
+                                    }
+                                }
                             }
                         }
+                    }
+                    2 -> { // CLOUD SYNC & BACKUP + LIBRARY STATS
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text("Cloud Presets & Library Info", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
 
-                        // Genres List
-                        genres.forEachIndexed { index, g ->
+                            // Library Count Info (Moved here as requested!)
                             Card(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = DarkSurface),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .padding(horizontal = 14.dp, vertical = 8.dp)
+                                        .padding(14.dp)
                                         .fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    Text(g, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(onClick = { viewModel.moveGenre(g, "up") }, enabled = index > 0, modifier = Modifier.size(28.dp)) {
-                                            Icon(Icons.Default.ArrowUpward, contentDescription = "Up", tint = if (index > 0) Color.White else Color.DarkGray, modifier = Modifier.size(16.dp))
-                                        }
-                                        IconButton(onClick = { viewModel.moveGenre(g, "down") }, enabled = index < genres.size - 1, modifier = Modifier.size(28.dp)) {
-                                            Icon(Icons.Default.ArrowDownward, contentDescription = "Down", tint = if (index < genres.size - 1) Color.White else Color.DarkGray, modifier = Modifier.size(16.dp))
-                                        }
-                                        IconButton(onClick = { viewModel.deleteGenre(g) }, modifier = Modifier.size(28.dp)) {
-                                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(16.dp))
-                                        }
+                                    Column {
+                                        Text("Total Radio Library", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("Active in app storage", fontSize = 11.sp, color = Color.Gray)
                                     }
-                                }
-                            }
-                        }
-                    }
-                }
-                1 -> { // THEMES & COLOR PICKER
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text("10 Curated M3 Theme Presets", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("Changes the glowing studio accents and controls dynamically.", fontSize = 11.sp, color = Color.Gray)
-
-                        LazyVerticalGrid(
-                            columns = GridCells.Fixed(2),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.height(280.dp)
-                        ) {
-                            itemsIndexed(DefaultStations.THEMES) { _, theme ->
-                                val color = parseHexColor(theme.colorHex)
-                                val isCurrent = uiState.themeColorHex.equals(theme.colorHex, ignoreCase = true)
-                                Row(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isCurrent) Color(0xFF1E283C) else Color(0xFF0A0F1A))
-                                        .border(1.dp, if (isCurrent) color else Color(0x10FFFFFF), RoundedCornerShape(12.dp))
-                                        .clickable { viewModel.setThemeColor(theme.colorHex) }
-                                        .padding(10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(24.dp)
-                                            .clip(CircleShape)
-                                            .background(color)
+                                    Text(
+                                        "${allStations.size} stations • ${genres.size} genres",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = accentColor,
+                                        fontFamily = FontFamily.Monospace
                                     )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(theme.name, fontSize = 11.sp, color = Color.White, maxLines = 1)
                                 }
                             }
-                        }
-                    }
-                }
-                2 -> { // CLOUD SYNC & BACKUP
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text("Cloud Presets & Backup", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
 
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Sync Room Key", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                Text(uiState.syncRoomCode, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = accentColor, fontFamily = FontFamily.Monospace)
-                                Text("Enter this room code on another phone or computer to sync all stations and custom genres.", fontSize = 11.sp, color = Color.Gray)
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Sync Room Key", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                    Text(uiState.syncRoomCode, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = accentColor, fontFamily = FontFamily.Monospace)
+                                    Text("Enter this room code on another phone or computer to sync all stations and custom genres.", fontSize = 11.sp, color = Color.Gray)
+                                }
+                            }
+
+                            Button(
+                                onClick = { /* Export */ },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Export Stations to JSON", color = Color.White)
+                            }
+
+                            Button(
+                                onClick = { /* Export */ },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Export M3U Playlist", color = Color.White)
                             }
                         }
-
-                        Button(
-                            onClick = { /* Export */ },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export Stations to JSON", color = Color.White)
-                        }
-
-                        Button(
-                            onClick = { /* Export */ },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E283C)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Export M3U Playlist", color = Color.White)
-                        }
                     }
-                }
-                3 -> { // BLUETOOTH
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text("Bluetooth & Audio Outputs", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        val devices = viewModel.bluetoothHelper.getConnectedAudioDevices()
-                        if (devices.isEmpty()) {
-                            Text("No external Bluetooth headphones or speakers currently connected. Audio is playing via phone speaker.", fontSize = 12.sp, color = Color.Gray)
-                        } else {
-                            devices.forEach { dev ->
-                                Card(
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically
+                    3 -> { // BLUETOOTH
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text("Bluetooth & Audio Outputs", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            val devices = viewModel.bluetoothHelper.getConnectedAudioDevices()
+                            if (devices.isEmpty()) {
+                                Text("No external Bluetooth headphones or speakers currently connected. Audio is playing via phone speaker.", fontSize = 12.sp, color = Color.Gray)
+                            } else {
+                                devices.forEach { dev ->
+                                    Card(
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                                        modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Icon(Icons.Default.Headphones, contentDescription = null, tint = accentColor)
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Text(dev, color = Color.White, fontSize = 13.sp)
+                                        Row(
+                                            modifier = Modifier.padding(14.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Headphones, contentDescription = null, tint = accentColor)
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text(dev, color = Color.White, fontSize = 13.sp)
+                                        }
                                     }
                                 }
                             }
@@ -1805,7 +2013,72 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            // Floating Batch Delete Action Bar in Select Mode
+            if (uiState.isGenreSelectMode && uiState.selectedGenresForDeletion.isNotEmpty()) {
+                Card(
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1B2438)),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                        .fillMaxWidth()
+                        .shadow(16.dp, RoundedCornerShape(24.dp))
+                        .border(1.dp, Color(0xFFEF4444).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "${uiState.selectedGenresForDeletion.size} selected",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+
+                        Button(
+                            onClick = { showBatchDeleteConfirm = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Delete Selected", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    // Batch Delete Confirmation Dialog
+    if (showBatchDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBatchDeleteConfirm = false },
+            title = { Text("Delete Genres?", fontWeight = FontWeight.Bold, color = Color.White) },
+            text = { Text("Are you sure you want to delete ${uiState.selectedGenresForDeletion.size} selected genres? Stations in these groups will be moved to General.", color = Color.LightGray) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showBatchDeleteConfirm = false
+                        viewModel.deleteSelectedGenres()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBatchDeleteConfirm = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            containerColor = Color(0xFF141C2D)
+        )
     }
 }
 
@@ -1919,4 +2192,3 @@ fun EqualizerBarAnimation(accentColor: Color, delayMs: Int) {
             .background(accentColor)
     )
 }
-
