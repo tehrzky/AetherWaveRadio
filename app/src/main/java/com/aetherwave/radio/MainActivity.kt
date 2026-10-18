@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.aetherwave.radio.util.BluetoothDeviceInfo
 import com.aetherwave.radio.data.DefaultStations
 import com.aetherwave.radio.data.SortOption
 import com.aetherwave.radio.data.Station
@@ -468,6 +469,13 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                 text = { Text("Favorites First") },
                                 onClick = {
                                     viewModel.setSortOption(SortOption.FAVORITES_FIRST)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Recently Played") },
+                                onClick = {
+                                    viewModel.setSortOption(SortOption.RECENTLY_PLAYED)
                                     showSortMenu = false
                                 }
                             )
@@ -2966,10 +2974,10 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
 // 6. Bluetooth Subpage
 @Composable
 fun BluetoothSubPage(viewModel: RadioViewModel, accentColor: Color) {
-    val isAvailable by viewModel.bluetoothHelper.isAvailable.collectAsState()
-    val isEnabled by viewModel.bluetoothHelper.isEnabled.collectAsState()
-    val pairedDevices by viewModel.bluetoothHelper.pairedDevices.collectAsState()
-    val connectedDevice by viewModel.bluetoothHelper.connectedDevice.collectAsState()
+    val isAvailable: Boolean by viewModel.bluetoothHelper.isAvailable.collectAsState()
+    val isEnabled: Boolean by viewModel.bluetoothHelper.isEnabled.collectAsState()
+    val pairedDevices: List<BluetoothDeviceInfo> by viewModel.bluetoothHelper.pairedDevices.collectAsState()
+    val connectedDevice: BluetoothDeviceInfo? by viewModel.bluetoothHelper.connectedDevice.collectAsState()
 
     Column(
         modifier = Modifier
@@ -3271,7 +3279,7 @@ fun SleepTimerDialog(
 
                     Button(
                         onClick = {
-                            viewModel.sleepTimerManager.startTimer(selectedMins)
+                            viewModel.sleepTimerManager.startTimer(selectedMins, fadeOut = true)
                             onClose()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
