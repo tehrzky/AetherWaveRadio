@@ -1,19 +1,23 @@
 package com.aetherwave.radio.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
-val DarkBackground = Color(0xFF090D16)
-val DarkSurface = Color(0xFF111726)
-val DarkSurfaceElevated = Color(0xFF182234)
+val DarkBackgroundDefault = Color(0xFF090D16)
+val DarkSurfaceDefault = Color(0xFF111726)
+val DarkSurfaceElevatedDefault = Color(0xFF182234)
 
-val LightBackground = Color(0xFFF8FAFC)
-val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceElevated = Color(0xFFF1F5F9)
+val LightBackgroundDefault = Color(0xFFF8FAFC)
+val LightSurfaceDefault = Color(0xFFFFFFFF)
+val LightSurfaceElevatedDefault = Color(0xFFF1F5F9)
 
 fun parseHexColor(hexString: String, fallback: Color = Color(0xFFF59E0B)): Color {
     return try {
@@ -34,47 +38,65 @@ fun parseHexColor(hexString: String, fallback: Color = Color(0xFFF59E0B)): Color
 @Composable
 fun AetherWaveRadioTheme(
     accentColorHex: String = "#F59E0B",
+    backgroundColorHex: String = "#090D16",
     themeMode: String = "dark",
+    isMonet: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val primaryColor = parseHexColor(accentColorHex, Color(0xFFF59E0B))
-
+    val context = LocalContext.current
     val isDark = when (themeMode) {
         "light" -> false
         "dark" -> true
         else -> isSystemInDarkTheme()
     }
 
-    val colorScheme = if (isDark) {
-        darkColorScheme(
-            primary = primaryColor,
-            onPrimary = Color(0xFF0A0F1A),
-            primaryContainer = primaryColor.copy(alpha = 0.22f),
-            onPrimaryContainer = primaryColor,
-            secondary = primaryColor.copy(alpha = 0.85f),
-            onSecondary = Color.White,
-            surface = DarkSurface,
-            onSurface = Color(0xFFF1F5F9),
-            surfaceVariant = DarkSurfaceElevated,
-            onSurfaceVariant = Color(0xFFCBD5E1),
-            background = DarkBackground,
-            onBackground = Color(0xFFF1F5F9)
-        )
+    val primaryColor = parseHexColor(accentColorHex, Color(0xFFF59E0B))
+    val customBgColor = parseHexColor(backgroundColorHex, if (isDark) DarkBackgroundDefault else LightBackgroundDefault)
+    
+    // Derived surface colors based on custom background
+    val customSurface = if (isDark) {
+        if (backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF121212)
+        else Color(customBgColor.value).copy(alpha = 1f)
     } else {
-        lightColorScheme(
-            primary = primaryColor,
-            onPrimary = Color.White,
-            primaryContainer = primaryColor.copy(alpha = 0.15f),
-            onPrimaryContainer = primaryColor,
-            secondary = primaryColor.copy(alpha = 0.85f),
-            onSecondary = Color.White,
-            surface = LightSurface,
-            onSurface = Color(0xFF0F172A),
-            surfaceVariant = LightSurfaceElevated,
-            onSurfaceVariant = Color(0xFF334155),
-            background = LightBackground,
-            onBackground = Color(0xFF0F172A)
-        )
+        LightSurfaceDefault
+    }
+
+    val colorScheme = when {
+        isMonet && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        isDark -> {
+            darkColorScheme(
+                primary = primaryColor,
+                onPrimary = Color(0xFF0A0F1A),
+                primaryContainer = primaryColor.copy(alpha = 0.22f),
+                onPrimaryContainer = primaryColor,
+                secondary = primaryColor.copy(alpha = 0.85f),
+                onSecondary = Color.White,
+                surface = if (backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF141414) else DarkSurfaceDefault,
+                onSurface = Color(0xFFF1F5F9),
+                surfaceVariant = if (backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF1E1E1E) else DarkSurfaceElevatedDefault,
+                onSurfaceVariant = Color(0xFFCBD5E1),
+                background = customBgColor,
+                onBackground = Color(0xFFF1F5F9)
+            )
+        }
+        else -> {
+            lightColorScheme(
+                primary = primaryColor,
+                onPrimary = Color.White,
+                primaryContainer = primaryColor.copy(alpha = 0.15f),
+                onPrimaryContainer = primaryColor,
+                secondary = primaryColor.copy(alpha = 0.85f),
+                onSecondary = Color.White,
+                surface = LightSurfaceDefault,
+                onSurface = Color(0xFF0F172A),
+                surfaceVariant = LightSurfaceElevatedDefault,
+                onSurfaceVariant = Color(0xFF334155),
+                background = customBgColor,
+                onBackground = Color(0xFF0F172A)
+            )
+        }
     }
 
     MaterialTheme(
