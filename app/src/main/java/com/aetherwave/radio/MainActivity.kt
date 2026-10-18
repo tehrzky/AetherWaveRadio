@@ -434,6 +434,7 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                     SortOption.NAME_ASC -> "A - Z"
                                     SortOption.NAME_DESC -> "Z - A"
                                     SortOption.FAVORITES_FIRST -> "Favorites"
+                                    SortOption.RECENTLY_PLAYED -> "Recent"
                                 },
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface
