@@ -39,6 +39,7 @@ fun parseHexColor(hexString: String, fallback: Color = Color(0xFFF59E0B)): Color
 fun AetherWaveRadioTheme(
     accentColorHex: String = "#F59E0B",
     backgroundColorHex: String = "#090D16",
+    cardColorHex: String = "#111726",
     themeMode: String = "dark",
     isMonet: Boolean = false,
     content: @Composable () -> Unit
@@ -52,14 +53,7 @@ fun AetherWaveRadioTheme(
 
     val primaryColor = parseHexColor(accentColorHex, Color(0xFFF59E0B))
     val customBgColor = parseHexColor(backgroundColorHex, if (isDark) DarkBackgroundDefault else LightBackgroundDefault)
-    
-    // Derived surface colors based on custom background
-    val customSurface = if (isDark) {
-        if (backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF121212)
-        else Color(customBgColor.value).copy(alpha = 1f)
-    } else {
-        LightSurfaceDefault
-    }
+    val customCardColor = parseHexColor(cardColorHex, if (isDark) DarkSurfaceDefault else LightSurfaceDefault)
 
     val colorScheme = when {
         isMonet && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
@@ -73,9 +67,9 @@ fun AetherWaveRadioTheme(
                 onPrimaryContainer = primaryColor,
                 secondary = primaryColor.copy(alpha = 0.85f),
                 onSecondary = Color.White,
-                surface = if (backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF141414) else DarkSurfaceDefault,
+                surface = customCardColor,
                 onSurface = Color(0xFFF1F5F9),
-                surfaceVariant = if (backgroundColorHex.equals("#000000", ignoreCase = true)) Color(0xFF1E1E1E) else DarkSurfaceElevatedDefault,
+                surfaceVariant = Color(customCardColor.value).copy(alpha = 0.85f),
                 onSurfaceVariant = Color(0xFFCBD5E1),
                 background = customBgColor,
                 onBackground = Color(0xFFF1F5F9)
@@ -89,10 +83,10 @@ fun AetherWaveRadioTheme(
                 onPrimaryContainer = primaryColor,
                 secondary = primaryColor.copy(alpha = 0.85f),
                 onSecondary = Color.White,
-                surface = LightSurfaceDefault,
-                onSurface = Color(0xFF0F172A),
-                surfaceVariant = LightSurfaceElevatedDefault,
-                onSurfaceVariant = Color(0xFF334155),
+                surface = customCardColor,
+                onSurface = if (customCardColor == LightSurfaceDefault) Color(0xFF0F172A) else Color(0xFFF1F5F9),
+                surfaceVariant = Color(customCardColor.value).copy(alpha = 0.85f),
+                onSurfaceVariant = Color(0xFFCBD5E1),
                 background = customBgColor,
                 onBackground = Color(0xFF0F172A)
             )

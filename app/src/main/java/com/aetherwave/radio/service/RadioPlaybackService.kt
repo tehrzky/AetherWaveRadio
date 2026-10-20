@@ -4,8 +4,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.audiofx.Equalizer
 import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -26,10 +29,13 @@ class RadioPlaybackService : MediaSessionService() {
 
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
+    private var androidEqualizer: Equalizer? = null
 
     companion object {
         const val CHANNEL_ID = "aetherwave_radio_channel"
+        const val ALARM_CHANNEL_ID = "aetherwave_alarm_channel"
         const val ACTION_PLAY_ALARM = "com.aetherwave.radio.ACTION_PLAY_ALARM"
+        const val ACTION_SET_EQ = "com.aetherwave.radio.ACTION_SET_EQ"
 
         fun buildMediaItem(station: Station): MediaItem {
             val cleanUrl = station.streamUrl.trim()
@@ -54,7 +60,7 @@ class RadioPlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
+        createNotificationChannels()
 
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -81,11 +87,28 @@ class RadioPlaybackService : MediaSessionService() {
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e("RadioPlaybackService", "ExoPlayer error [${error.errorCodeName}]: ${error.message}", error)
                     }
+
+                    override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                        initEqualizer(audioSessionId)
+                    }
                 })
             }
 
         mediaSession = MediaSession.Builder(this, player!!)
             .build()
+    }
+
+    private fun initEqualizer(audioSessionId: Int) {
+        if (audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId == 0) return
+        try {
+            androidEqualizer?.release()
+            androidEqualizer = Equalizer(0, audioSessionId).apply {
+                enabled = true
+            }
+            Log.d("RadioPlaybackService", "Android Equalizer initialized for session $audioSessionId")
+        } catch (e: Exception) {
+            Log.e("RadioPlaybackService", "Equalizer init error: ${e.message}")
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -103,6 +126,27 @@ class RadioPlaybackService : MediaSessionService() {
                 DefaultStations.STATIONS
             }
             val target = stations.firstOrNull { it.id == stationId } ?: stations.firstOrNull()
+
+            // Post ongoing Alarm Notification immediately to satisfy foreground service contract
+            val notification = NotificationCompat.Builder(this, ALARM_CHANNEL_ID)
+                .setContentTitle("AetherWave Alarm: ${target?.name ?: "Wake Up Radio"}")
+                .setContentText("Playing live wake-up radio broadcast")
+                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setOngoing(true)
+                .build()
+
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+                } else {
+                    startForeground(1001, notification)
+                }
+            } catch (e: Exception) {
+                Log.e("RadioPlaybackService", "startForeground error: ${e.message}")
+            }
+
             if (target != null && player != null) {
                 try {
                     val mediaItem = buildMediaItem(target)
@@ -118,17 +162,29 @@ class RadioPlaybackService : MediaSessionService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
-    private fun createNotificationChannel() {
+    private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val name = "AetherWave Radio Playback"
-            val descriptionText = "Live radio audio stream playback controls and status"
-            val importance = NotificationManager.IMPORTANCE_LOW
-            val channel = NotificationChannel(CHANNEL_ID, name, importance).apply {
-                description = descriptionText
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            val playChannel = NotificationChannel(
+                CHANNEL_ID,
+                "AetherWave Radio Playback",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Live radio audio stream playback controls and status"
                 setShowBadge(false)
             }
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(playChannel)
+
+            val alarmChannel = NotificationChannel(
+                ALARM_CHANNEL_ID,
+                "AetherWave Radio Alarm",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Wake-up radio alarm sound and status"
+                enableVibration(true)
+            }
+            notificationManager.createNotificationChannel(alarmChannel)
         }
     }
 
@@ -144,6 +200,11 @@ class RadioPlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        try {
+            androidEqualizer?.release()
+        } catch (_: Exception) {}
+        androidEqualizer = null
+
         mediaSession?.run {
             player.release()
             release()

@@ -17,6 +17,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import android.widget.Toast
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -57,6 +59,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import android.app.TimePickerDialog
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
@@ -68,6 +73,7 @@ import com.aetherwave.radio.ui.RadioViewModel
 import com.aetherwave.radio.ui.ScrapedRadioStation
 import com.aetherwave.radio.ui.SettingsSubPage
 import com.aetherwave.radio.ui.theme.*
+import com.aetherwave.radio.util.BluetoothDeviceInfo
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -95,6 +101,7 @@ class MainActivity : ComponentActivity() {
             AetherWaveRadioTheme(
                 accentColorHex = uiState.themeColorHex,
                 backgroundColorHex = uiState.backgroundColorHex,
+                cardColorHex = uiState.cardColorHex,
                 themeMode = uiState.themeMode,
                 isMonet = uiState.isMonetEnabled
             ) {
@@ -383,16 +390,21 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // ARRANGE BUTTON AS A MEDICINE PILL BESIDE LEFT OF CUSTOM/SORT
+                    // ARRANGE BUTTON AS A MEDICINE PILL BESIDE LEFT OF CUSTOM/SORT (STABLE FIXED SIZE)
                     Box(
                         modifier = Modifier
+                            .width(82.dp)
+                            .height(32.dp)
                             .clip(RoundedCornerShape(18.dp))
                             .background(if (uiState.isArrangeMode) accentColor else MaterialTheme.colorScheme.surface)
                             .border(1.dp, if (uiState.isArrangeMode) accentColor else Color(0x18FFFFFF), RoundedCornerShape(18.dp))
-                            .clickable { viewModel.toggleArrangeMode() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .clickable { viewModel.toggleArrangeMode() },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
                             Icon(
                                 if (uiState.isArrangeMode) Icons.Default.Check else Icons.Default.SwapVert,
                                 contentDescription = "Arrange Mode",
@@ -433,6 +445,7 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                     SortOption.NAME_ASC -> "A - Z"
                                     SortOption.NAME_DESC -> "Z - A"
                                     SortOption.FAVORITES_FIRST -> "Favorites"
+                                    SortOption.RECENTLY_PLAYED -> "Recent"
                                 },
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -468,6 +481,13 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                 text = { Text("Favorites First") },
                                 onClick = {
                                     viewModel.setSortOption(SortOption.FAVORITES_FIRST)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Recently Played") },
+                                onClick = {
+                                    viewModel.setSortOption(SortOption.RECENTLY_PLAYED)
                                     showSortMenu = false
                                 }
                             )
@@ -527,26 +547,37 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                         Text(st.group, fontSize = 11.sp, color = Color.Gray, maxLines = 1)
                                     }
 
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        IconButton(
-                                            onClick = { viewModel.moveStation(st.id, "up") },
-                                            enabled = idx > 0,
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(Icons.Default.ArrowUpward, contentDescription = "Move Up", tint = if (idx > 0) MaterialTheme.colorScheme.onSurface else Color.DarkGray, modifier = Modifier.size(16.dp))
-                                        }
-                                        IconButton(
-                                            onClick = { viewModel.moveStation(st.id, "down") },
-                                            enabled = idx < stations.size - 1,
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(Icons.Default.ArrowDownward, contentDescription = "Move Down", tint = if (idx < stations.size - 1) MaterialTheme.colorScheme.onSurface else Color.DarkGray, modifier = Modifier.size(16.dp))
-                                        }
+                                    var dragYOffset by remember { mutableFloatStateOf(0f) }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(accentColor.copy(alpha = 0.15f))
+                                            .pointerInput(st.id) {
+                                                detectDragGestures(
+                                                    onDrag = { change, dragAmount ->
+                                                        change.consume()
+                                                        dragYOffset += dragAmount.y
+                                                        val currentIndex = stations.indexOfFirst { it.id == st.id }
+                                                        if (dragYOffset > 42f && currentIndex in 0 until stations.size - 1) {
+                                                            viewModel.reorderStations(currentIndex, currentIndex + 1)
+                                                            dragYOffset -= 42f
+                                                        } else if (dragYOffset < -42f && currentIndex > 0) {
+                                                            viewModel.reorderStations(currentIndex, currentIndex - 1)
+                                                            dragYOffset += 42f
+                                                        }
+                                                    },
+                                                    onDragEnd = { dragYOffset = 0f },
+                                                    onDragCancel = { dragYOffset = 0f }
+                                                )
+                                            },
+                                        contentAlignment = Alignment.Center
+                                    ) {
                                         Icon(
                                             Icons.Default.DragHandle,
-                                            contentDescription = null,
+                                            contentDescription = "Drag to reorder",
                                             tint = accentColor,
-                                            modifier = Modifier.padding(start = 4.dp).size(20.dp)
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                 }
@@ -724,6 +755,7 @@ fun StationGridCardClean(
         ),
         modifier = Modifier
             .fillMaxWidth()
+            .height(152.dp)
             .border(
                 width = if (isCurrent) 1.5.dp else 1.dp,
                 color = if (isCurrent) accentColor else Color(0x14FFFFFF),
@@ -823,6 +855,7 @@ fun StationListCardRightPlay(
         ),
         modifier = Modifier
             .fillMaxWidth()
+            .height(68.dp)
             .border(
                 width = if (isCurrent) 1.5.dp else 1.dp,
                 color = if (isCurrent) accentColor else Color(0x14FFFFFF),
@@ -1399,7 +1432,7 @@ fun ExpandedMasterDeckDialog(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    if (station.isFavorite) "Saved" else "Favorite",
+                                    "Favorite",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (station.isFavorite) Color(0xFFFBBF24) else Color.White
@@ -2123,6 +2156,39 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
             }
         }
 
+        // Card & Container Color Presets
+        val cardPresets = listOf(
+            "#0B0E14" to "AMOLED Black",
+            "#111726" to "Midnight Navy",
+            "#181E29" to "Deep Charcoal",
+            "#1E293B" to "Slate Gray",
+            "#1A1429" to "Cyber Violet",
+            "#0E1F1D" to "Dark Emerald"
+        )
+        Text("Card & Container Surface Color", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            cardPresets.forEach { (hex, name) ->
+                val isSel = uiState.cardColorHex.equals(hex, ignoreCase = true)
+                val c = parseHexColor(hex)
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (isSel) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface)
+                        .border(1.dp, if (isSel) accentColor else Color(0x18FFFFFF), RoundedCornerShape(14.dp))
+                        .clickable { viewModel.setCardColor(hex) }
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.size(16.dp).clip(CircleShape).background(c).border(1.dp, Color.Gray, CircleShape))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(name, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal, color = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+        }
+
         // Accent Color Palette Presets
         Text("Accent Color Palette Presets", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
 
@@ -2199,6 +2265,24 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         modifier = Modifier.weight(1f)
                     )
                     Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(parseHexColor(uiState.backgroundColorHex)).border(1.dp, Color.White, CircleShape))
+                }
+
+                var customCardText by remember { mutableStateOf(uiState.cardColorHex) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Cards BG:", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.width(70.dp))
+                    OutlinedTextField(
+                        value = customCardText,
+                        onValueChange = {
+                            customCardText = it
+                            if (it.matches(Regex("^#[0-9A-Fa-f]{6}$"))) {
+                                viewModel.setCardColor(it)
+                            }
+                        },
+                        placeholder = { Text("#111726", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(parseHexColor(uiState.cardColorHex)).border(1.dp, Color.White, CircleShape))
                 }
             }
         }
@@ -2340,11 +2424,17 @@ fun SpectrumSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
     }
 }
 
-// 3. Master Equalizer Subpage (REAL PLAYER COLUMN EQUALIZER DESIGN!)
+// 3. Master Equalizer Subpage (FULLY INTERACTIVE 5-BAND DSP EQUALIZER)
 @Composable
 fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val uiState by viewModel.uiState.collectAsState()
-    val bandLabels = listOf("60Hz", "230Hz", "910Hz", "3.6kHz", "14kHz")
+    val bandInfo = listOf(
+        "60 Hz" to "Sub Bass",
+        "230 Hz" to "Low Mids",
+        "910 Hz" to "Midrange",
+        "3.6 kHz" to "Presence",
+        "14 kHz" to "Brilliance"
+    )
     val presets = listOf("Flat", "Bass Boost", "Vocal Clarity", "Club/Dance", "Rock", "Classical", "Jazz")
 
     Column(
@@ -2353,11 +2443,27 @@ fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Presets Chips
-        Text("Equalizer Presets", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        // Presets Chips & Reset
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Equalizer Presets", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+            TextButton(
+                onClick = { viewModel.setEqPreset("Flat") },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, tint = accentColor, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Reset Flat", fontSize = 11.sp, color = accentColor, fontWeight = FontWeight.Bold)
+            }
+        }
 
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             presets.forEach { preset ->
@@ -2369,15 +2475,20 @@ fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         .clickable { viewModel.setEqPreset(preset) }
                         .padding(horizontal = 12.dp, vertical = 7.dp)
                 ) {
-                    Text(preset, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        preset,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
-        // REAL PLAYER EQUALIZER: 5 VERTICAL COLUMNS SIDE BY SIDE WITH dB SCALE
-        Text("5-Band Vertical Column Equalizer", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+        // 5-BAND FLUID INTERACTIVE EQUALIZER
+        Text("5-Band DSP Audio Equalizer (-12 dB to +12 dB)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
 
         Card(
             shape = RoundedCornerShape(20.dp),
@@ -2388,115 +2499,101 @@ fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
         ) {
             Column(
                 modifier = Modifier
-                    .padding(14.dp)
-                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // dB Scale Range Header
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("+12 dB", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
-                    Text("0 dB (Center Line)", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
-                    Text("-12 dB", fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // 5 Vertical Column Sliders
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    uiState.eqBands.forEachIndexed { index, gain ->
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.SpaceBetween,
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
+                uiState.eqBands.forEachIndexed { index, gain ->
+                    val (freq, desc) = bandInfo.getOrElse(index) { "$index Hz" to "Band" }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF090D16))
+                            .padding(horizontal = 12.dp, vertical = 10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Gain dB readout
-                            Text(
-                                "${if (gain > 0) "+" else ""}${gain.toInt()} dB",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (gain != 0f) accentColor else Color.Gray,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(freq, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("($desc)", fontSize = 11.sp, color = Color.Gray)
+                            }
 
-                            // Interactive Vertical Column Gain Slider
-                            Box(
-                                modifier = Modifier
-                                    .width(28.dp)
-                                    .height(120.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(Color(0xFF090D16))
-                                    .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(14.dp))
-                                    .pointerInput(Unit) {
-                                        detectVerticalDragGestures { change, dragAmount ->
-                                            change.consume()
-                                            // dragging up increases gain, dragging down decreases
-                                            val delta = -dragAmount / 5f
-                                            viewModel.setEqBand(index, gain + delta)
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                // Center 0dB guideline
+                            // Dynamic gain chip with fine-tune steppers
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { viewModel.setEqBand(index, gain - 1f) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Remove, contentDescription = "Step down", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                                }
+
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(1.dp)
-                                        .background(Color(0x40FFFFFF))
-                                )
-
-                                // Vertical fill bar
-                                val fraction = (gain / 12f).coerceIn(-1f, 1f)
-                                if (fraction >= 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(10.dp)
-                                            .fillMaxHeight(fraction / 2f)
-                                            .align(Alignment.Center)
-                                            .offset(y = (-30 * fraction).dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(accentColor)
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(10.dp)
-                                            .fillMaxHeight(-fraction / 2f)
-                                            .align(Alignment.Center)
-                                            .offset(y = (30 * -fraction).dp)
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(accentColor.copy(alpha = 0.6f))
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (gain != 0f) accentColor.copy(alpha = 0.2f) else Color(0x18FFFFFF))
+                                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        "${if (gain > 0) "+" else ""}${String.format("%.1f", gain)} dB",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (gain != 0f) accentColor else Color.Gray,
+                                        fontFamily = FontFamily.Monospace
                                     )
                                 }
 
-                                // Tactile Thumb Indicator
-                                val thumbOffset = (-50 * (gain / 12f)).coerceIn(-50f, 50f)
+                                IconButton(
+                                    onClick = { viewModel.setEqBand(index, gain + 1f) },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = "Step up", tint = Color.Gray, modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+
+                        // Fluid, smooth continuous Slider (unlocked, full freedom of movement)
+                        Slider(
+                            value = gain,
+                            onValueChange = { viewModel.setEqBand(index, it) },
+                            valueRange = -12f..12f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = accentColor,
+                                activeTrackColor = accentColor,
+                                inactiveTrackColor = Color(0x30FFFFFF)
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(36.dp)
+                        )
+
+                        // Quick Snap dB Markers
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            listOf(-12f, -6f, 0f, 6f, 12f).forEach { snapVal ->
+                                val isCurrentVal = (gain - snapVal) in -0.5f..0.5f
                                 Box(
                                     modifier = Modifier
-                                        .size(20.dp)
-                                        .offset(y = thumbOffset.dp)
-                                        .clip(CircleShape)
-                                        .background(accentColor)
-                                        .shadow(4.dp, CircleShape)
-                                )
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isCurrentVal) accentColor.copy(alpha = 0.25f) else Color(0x12FFFFFF))
+                                        .clickable { viewModel.setEqBand(index, snapVal) }
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        "${if (snapVal > 0) "+" else ""}${snapVal.toInt()}",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isCurrentVal) accentColor else Color.Gray,
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                }
                             }
-
-                            // Frequency Label
-                            Text(
-                                bandLabels.getOrElse(index) { "$index" },
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
                         }
                     }
                 }
@@ -2591,7 +2688,8 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                    modifier = Modifier.width(66.dp).height(38.dp)
                 ) {
                     Text("+ Add", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
@@ -2602,10 +2700,11 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         contentColor = if (uiState.isGenreArrangeMode) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    modifier = Modifier.width(76.dp).height(38.dp)
                 ) {
-                    Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(if (uiState.isGenreArrangeMode) Icons.Default.Check else Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Text(if (uiState.isGenreArrangeMode) "Done" else "Arrange", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Button(
@@ -2615,10 +2714,11 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         contentColor = if (uiState.isGenreSelectMode) Color.White else MaterialTheme.colorScheme.onSurface
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                    modifier = Modifier.width(76.dp).height(38.dp)
                 ) {
-                    Icon(if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Icon(if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(13.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Text(if (uiState.isGenreSelectMode) "Done" else "Select", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -2684,21 +2784,39 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     Text(g, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
 
                     if (uiState.isGenreArrangeMode) {
-                        IconButton(
-                            onClick = { viewModel.moveGenre(g, "up") },
-                            enabled = index > 0,
-                            modifier = Modifier.size(28.dp)
+                        var dragYOffset by remember { mutableFloatStateOf(0f) }
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(accentColor.copy(alpha = 0.15f))
+                                .pointerInput(g) {
+                                    detectDragGestures(
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            dragYOffset += dragAmount.y
+                                            val currentIndex = genres.indexOf(g)
+                                            if (dragYOffset > 38f && currentIndex in 0 until genres.size - 1) {
+                                                viewModel.reorderGenres(currentIndex, currentIndex + 1)
+                                                dragYOffset -= 38f
+                                            } else if (dragYOffset < -38f && currentIndex > 0) {
+                                                viewModel.reorderGenres(currentIndex, currentIndex - 1)
+                                                dragYOffset += 38f
+                                            }
+                                        },
+                                        onDragEnd = { dragYOffset = 0f },
+                                        onDragCancel = { dragYOffset = 0f }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.ArrowUpward, contentDescription = "Up", tint = if (index > 0) MaterialTheme.colorScheme.onSurface else Color.DarkGray, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.DragHandle,
+                                contentDescription = "Drag to reorder genre",
+                                tint = accentColor,
+                                modifier = Modifier.size(20.dp)
+                            )
                         }
-                        IconButton(
-                            onClick = { viewModel.moveGenre(g, "down") },
-                            enabled = index < genres.size - 1,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(Icons.Default.ArrowDownward, contentDescription = "Down", tint = if (index < genres.size - 1) MaterialTheme.colorScheme.onSurface else Color.DarkGray, modifier = Modifier.size(16.dp))
-                        }
-                        Icon(Icons.Default.DragHandle, contentDescription = null, tint = accentColor, modifier = Modifier.padding(start = 4.dp).size(18.dp))
                     }
                 }
             }
@@ -2730,9 +2848,10 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
     }
 }
 
-// 5. Wake-Up Alarm Clock Subpage (Android Alarm Clock Carousel 12-hr Wheel + Station Picker + Background Scheduling)
+// 5. Wake-Up Alarm Clock Subpage (Direct Time Selection, System Dial, Presets & Background Scheduling)
 @Composable
 fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val stations by viewModel.stations.collectAsState()
 
@@ -2741,7 +2860,6 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
     var minute by remember { mutableStateOf(uiState.alarmMinute) }
     var selectedStationId by remember { mutableStateOf(uiState.alarmStationId ?: stations.firstOrNull()?.id) }
 
-    // 12-hour format display conversion
     var isAm by remember { mutableStateOf(hour24 < 12) }
     var hour12 by remember {
         val h = hour24 % 12
@@ -2757,6 +2875,8 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
         }
         hour24 = h24
         minute = min
+        hour12 = h12
+        isAm = am
         viewModel.setAlarm(enabled, h24, min, selectedStationId)
     }
 
@@ -2779,7 +2899,7 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 ) {
                     Column {
                         Text("Radio Alarm Clock", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text("Auto-play live radio in background", fontSize = 11.sp, color = Color.Gray)
+                        Text("Survives background & screen-off via AlarmManager", fontSize = 11.sp, color = Color.Gray)
                     }
 
                     Switch(
@@ -2792,149 +2912,151 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     )
                 }
 
-                // ANDROID ALARM CLOCK STYLE CAROUSEL WHEEL (Hour 1-12, Minute 00-59, AM/PM)
+                // Digital Clock Display with Direct Time Indicator
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
                         .background(Color(0xFF090D16))
-                        .padding(vertical = 20.dp, horizontal = 16.dp),
+                        .padding(vertical = 18.dp, horizontal = 16.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        // Hour Column (Slide up/down carousel)
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .width(70.dp)
-                                .pointerInput(hour12) {
-                                    detectVerticalDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        if (dragAmount < -15f) {
-                                            val nextH = if (hour12 >= 12) 1 else hour12 + 1
-                                            hour12 = nextH
-                                            updateAlarmTime(nextH, minute, isAm)
-                                        } else if (dragAmount > 15f) {
-                                            val prevH = if (hour12 <= 1) 12 else hour12 - 1
-                                            hour12 = prevH
-                                            updateAlarmTime(prevH, minute, isAm)
-                                        }
-                                    }
-                                }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            IconButton(onClick = {
-                                val nextH = if (hour12 >= 12) 1 else hour12 + 1
-                                hour12 = nextH
-                                updateAlarmTime(nextH, minute, isAm)
-                            }) {
-                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Hour Up", tint = Color.Gray)
-                            }
-
                             Text(
-                                String.format("%02d", hour12),
-                                fontSize = 46.sp,
+                                String.format("%02d:%02d", hour12, minute),
+                                fontSize = 48.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (enabled) accentColor else Color.Gray,
                                 fontFamily = FontFamily.Monospace
                             )
-
-                            IconButton(onClick = {
-                                val prevH = if (hour12 <= 1) 12 else hour12 - 1
-                                hour12 = prevH
-                                updateAlarmTime(prevH, minute, isAm)
-                            }) {
-                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Hour Down", tint = Color.Gray)
-                            }
-                        }
-
-                        // Colon Separator
-                        Text(":", fontSize = 38.sp, fontWeight = FontWeight.Bold, color = Color.Gray, modifier = Modifier.padding(horizontal = 4.dp))
-
-                        // Minute Column (Slide up/down carousel)
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .width(70.dp)
-                                .pointerInput(minute) {
-                                    detectVerticalDragGestures { change, dragAmount ->
-                                        change.consume()
-                                        if (dragAmount < -15f) {
-                                            val nextM = if (minute >= 59) 0 else minute + 1
-                                            minute = nextM
-                                            updateAlarmTime(hour12, nextM, isAm)
-                                        } else if (dragAmount > 15f) {
-                                            val prevM = if (minute <= 0) 59 else minute - 1
-                                            minute = prevM
-                                            updateAlarmTime(hour12, prevM, isAm)
-                                        }
-                                    }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            // AM / PM Toggle Pills
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isAm) accentColor else Color(0x20FFFFFF))
+                                        .clickable { updateAlarmTime(hour12, minute, true) }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Text("AM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isAm) Color(0xFF090D16) else Color.White)
                                 }
-                        ) {
-                            IconButton(onClick = {
-                                val nextM = if (minute >= 59) 0 else minute + 1
-                                minute = nextM
-                                updateAlarmTime(hour12, nextM, isAm)
-                            }) {
-                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Min Up", tint = Color.Gray)
-                            }
-
-                            Text(
-                                String.format("%02d", minute),
-                                fontSize = 46.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (enabled) accentColor else Color.Gray,
-                                fontFamily = FontFamily.Monospace
-                            )
-
-                            IconButton(onClick = {
-                                val prevM = if (minute <= 0) 59 else minute - 1
-                                minute = prevM
-                                updateAlarmTime(hour12, prevM, isAm)
-                            }) {
-                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Min Down", tint = Color.Gray)
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (!isAm) accentColor else Color(0x20FFFFFF))
+                                        .clickable { updateAlarmTime(hour12, minute, false) }
+                                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Text("PM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (!isAm) Color(0xFF090D16) else Color.White)
+                                }
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        // AM / PM Segmented Box Toggle
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (isAm) accentColor else Color(0x20FFFFFF))
-                                    .clickable {
-                                        isAm = true
-                                        updateAlarmTime(hour12, minute, true)
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("AM", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isAm) Color(0xFF090D16) else Color.White)
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (!isAm) accentColor else Color(0x20FFFFFF))
-                                    .clickable {
-                                        isAm = false
-                                        updateAlarmTime(hour12, minute, false)
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Text("PM", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (!isAm) Color(0xFF090D16) else Color.White)
-                            }
+                        // Open System Android Clock Dial Button
+                        OutlinedButton(
+                            onClick = {
+                                TimePickerDialog(
+                                    context,
+                                    { _, selectedH24, selectedM ->
+                                        val am = selectedH24 < 12
+                                        val h = selectedH24 % 12
+                                        val h12 = if (h == 0) 12 else h
+                                        updateAlarmTime(h12, selectedM, am)
+                                    },
+                                    hour24,
+                                    minute,
+                                    false
+                                ).show()
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
+                        ) {
+                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Open Clock Dial", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
 
-                // Station Selector Card (Compact picker instead of long overwhelming list!)
-                Text("Alarm Wake-Up Radio Station", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                // Quick Wake-Up Presets
+                Text("Quick Wake Presets", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(
+                        Triple(6, 0, true) to "6:00 AM",
+                        Triple(6, 30, true) to "6:30 AM",
+                        Triple(7, 0, true) to "7:00 AM",
+                        Triple(7, 30, true) to "7:30 AM",
+                        Triple(8, 0, true) to "8:00 AM",
+                        Triple(8, 30, true) to "8:30 AM"
+                    ).forEach { (timeTuple, label) ->
+                        val (h, m, am) = timeTuple
+                        val isSel = hour12 == h && minute == m && isAm == am
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSel) accentColor else Color(0x15FFFFFF))
+                                .clickable { updateAlarmTime(h, m, am) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+
+                // Direct Hour Selector (1-12)
+                Text("Select Hour", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    (1..12).forEach { h ->
+                        val isSel = hour12 == h
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(if (isSel) accentColor else Color(0x18FFFFFF))
+                                .clickable { updateAlarmTime(h, minute, isAm) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("$h", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+
+                // Direct Minute Selector (:00, :05, :10, :15, :20, :25, :30, :35, :40, :45, :50, :55)
+                Text("Select Minute", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
+                        val isSel = minute == m
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSel) accentColor else Color(0x18FFFFFF))
+                                .clickable { updateAlarmTime(hour12, m, isAm) }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(String.format(":%02d", m), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+                }
+
+                // Station Selector Card
+                Text("Wake-Up Radio Broadcast Station", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
 
                 val currentSelectedSt = stations.firstOrNull { it.id == selectedStationId } ?: stations.firstOrNull()
-
                 var showStationDropdown by remember { mutableStateOf(false) }
 
                 Card(
@@ -2972,8 +3094,8 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         Spacer(modifier = Modifier.width(12.dp))
 
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(currentSelectedSt?.name ?: "Select Station", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, maxLines = 1)
-                            Text(currentSelectedSt?.group ?: "Default", fontSize = 11.sp, color = Color.Gray)
+                            Text(currentSelectedSt?.name ?: "Select Station", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(currentSelectedSt?.group ?: "All", fontSize = 11.sp, color = Color.Gray, maxLines = 1)
                         }
 
                         Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = accentColor)
@@ -2985,7 +3107,7 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     ) {
                         stations.forEach { st ->
                             DropdownMenuItem(
-                                text = { Text("${st.name} (${st.group})") },
+                                text = { Text(st.name, fontSize = 13.sp) },
                                 onClick = {
                                     selectedStationId = st.id
                                     viewModel.setAlarm(enabled, hour24, minute, st.id)
@@ -2995,6 +3117,21 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         }
                     }
                 }
+
+                // Test Alarm in 5 Seconds Button
+                Button(
+                    onClick = {
+                        viewModel.testAlarmInSeconds(5)
+                        Toast.makeText(context, "Alarm scheduled in 5s! You can turn off the screen now to test.", Toast.LENGTH_LONG).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                ) {
+                    Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Test Alarm Now (5 Seconds)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
             }
         }
     }
@@ -3003,10 +3140,10 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
 // 6. Bluetooth Subpage
 @Composable
 fun BluetoothSubPage(viewModel: RadioViewModel, accentColor: Color) {
-    val isAvailable by viewModel.bluetoothHelper.isAvailable.collectAsState()
-    val isEnabled by viewModel.bluetoothHelper.isEnabled.collectAsState()
-    val pairedDevices by viewModel.bluetoothHelper.pairedDevices.collectAsState()
-    val connectedDevice by viewModel.bluetoothHelper.connectedDevice.collectAsState()
+    val isAvailable: Boolean by viewModel.bluetoothHelper.isAvailable.collectAsState()
+    val isEnabled: Boolean by viewModel.bluetoothHelper.isEnabled.collectAsState()
+    val pairedDevices: List<BluetoothDeviceInfo> by viewModel.bluetoothHelper.pairedDevices.collectAsState()
+    val connectedDevice: BluetoothDeviceInfo? by viewModel.bluetoothHelper.connectedDevice.collectAsState()
 
     Column(
         modifier = Modifier
@@ -3043,7 +3180,7 @@ fun BluetoothSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 Text("No paired Bluetooth headsets or speakers found.", color = Color.Gray, fontSize = 12.sp)
             }
         } else {
-            pairedDevices.forEach { dev ->
+            pairedDevices.forEach { dev: BluetoothDeviceInfo ->
                 Card(
                     shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -3071,7 +3208,14 @@ fun BluetoothSubPage(viewModel: RadioViewModel, accentColor: Color) {
 // 7. Cloud Backup Subpage
 @Composable
 fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val stations by viewModel.stations.collectAsState()
+    val uiState by viewModel.uiState.collectAsState()
+
+    var showImportDialog by remember { mutableStateOf(false) }
+    var importText by remember { mutableStateOf("") }
+    var showRestoreConfirmDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -3079,6 +3223,7 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Station Library Stats Card
         Card(
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -3086,9 +3231,181 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Station Library Stats", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("Total stations in local database: ${stations.size}", fontSize = 12.sp, color = Color.LightGray)
-                Text("Favorites: ${stations.count { it.isFavorite }}", fontSize = 12.sp, color = Color.LightGray)
+                Text("Total radio stations saved: ${stations.size}", fontSize = 12.sp, color = Color.LightGray)
+                Text("Favorited broadcasts: ${stations.count { it.isFavorite }}", fontSize = 12.sp, color = Color.LightGray)
             }
+        }
+
+        // Backup Export & Import Card
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Backup & Restore Stations (JSON)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("Export all radio presets and custom added streams, or import back anytime.", fontSize = 11.sp, color = Color.Gray)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val json = viewModel.exportStationsJson()
+                            clipboardManager.setText(AnnotatedString(json))
+                            Toast.makeText(context, "Copied backup JSON (${stations.size} stations) to clipboard!", Toast.LENGTH_LONG).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(42.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Export Backup", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+
+                    Button(
+                        onClick = { showImportDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.weight(1f).height(42.dp)
+                    ) {
+                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Import Backup", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+                }
+
+                // Restore Defaults
+                OutlinedButton(
+                    onClick = { showRestoreConfirmDialog = true },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
+                    modifier = Modifier.fillMaxWidth().height(40.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Restore Default Stations Library", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        // Cloud Room Sync Code Card
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Cloud Room Sync Code", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text("Sync your curated presets across devices using this 6-character room token.", fontSize = 11.sp, color = Color.Gray)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color(0xFF090D16))
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text(uiState.syncRoomCode, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, color = accentColor)
+                    }
+
+                    Button(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(uiState.syncRoomCode))
+                            Toast.makeText(context, "Sync Room Code copied!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.width(80.dp).height(40.dp)
+                    ) {
+                        Text("Copy", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.generateSyncRoomCode() },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = Color.Gray)
+                    }
+                }
+            }
+        }
+
+        // Import Dialog
+        if (showImportDialog) {
+            AlertDialog(
+                onDismissRequest = { showImportDialog = false },
+                title = { Text("Import Station Backup") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Paste your exported JSON stations list below:", fontSize = 12.sp, color = Color.Gray)
+                        OutlinedTextField(
+                            value = importText,
+                            onValueChange = { importText = it },
+                            placeholder = { Text("[{\"id\":\"1\", \"name\":\"...\"}]", fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth().height(140.dp),
+                            textStyle = TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (importText.isNotBlank()) {
+                                val success = viewModel.importStationsJson(importText.trim())
+                                if (success) {
+                                    Toast.makeText(context, "Successfully restored stations!", Toast.LENGTH_LONG).show()
+                                    showImportDialog = false
+                                    importText = ""
+                                } else {
+                                    Toast.makeText(context, "Invalid JSON backup format", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))
+                    ) {
+                        Text("Import & Merge")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showImportDialog = false }) {
+                        Text("Cancel", color = Color.Gray)
+                    }
+                }
+            )
+        }
+
+        // Restore Confirm Dialog
+        if (showRestoreConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showRestoreConfirmDialog = false },
+                title = { Text("Restore Default Stations?") },
+                text = { Text("This will reset your station list back to the default curated broadcasts.", fontSize = 13.sp) },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.restoreDefaultStations()
+                            Toast.makeText(context, "Restored default stations", Toast.LENGTH_SHORT).show()
+                            showRestoreConfirmDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
+                    ) {
+                        Text("Restore Defaults")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showRestoreConfirmDialog = false }) {
+                        Text("Cancel", color = Color.Gray)
+                    }
+                }
+            )
         }
     }
 }
@@ -3096,22 +3413,121 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
 // 8. Player Engine Subpage
 @Composable
 fun PlayerSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
+    val uiState by viewModel.uiState.collectAsState()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Stream Engine Architecture
         Card(
             shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Stream Engine: ExoPlayer / Media3", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("Auto Audio Focus: Enabled (Ducks when phone rings)", fontSize = 12.sp, color = Color.Gray)
-                Text("Network Wake Lock: Enabled (Continuous background streaming)", fontSize = 12.sp, color = Color.Gray)
-                Text("Cross-Protocol Redirects: Enabled", fontSize = 12.sp, color = Color.Gray)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Streaming Engine", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(accentColor.copy(alpha = 0.2f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text("ExoPlayer 3", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                    }
+                }
+                Text("Hardware accelerated MPEG, AAC, Ogg, and HLS .m3u8 live stream decoding with adaptive audio buffering.", fontSize = 11.sp, color = Color.Gray)
+            }
+        }
+
+        // Buffer Profile Setting
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Audio Buffer Profile", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Configure stream pre-fetch buffer to balance switching speed vs cellular stability.", fontSize = 11.sp, color = Color.Gray)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf("Low", "Medium", "High").forEach { size ->
+                        val isSel = uiState.bufferSize.equals(size, ignoreCase = true)
+                        val label = when (size) {
+                            "Low" -> "Fast (5s)"
+                            "High" -> "Stable (30s)"
+                            else -> "Balanced (15s)"
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(if (isSel) accentColor else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable { viewModel.setBufferSize(size) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Audio Focus & Protection Toggles
+        Card(
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text("Audio Focus & Hardware Handling", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Pause on Headset Disconnect", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Immediately halts audio when wired or Bluetooth earphones unplug", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    Switch(
+                        checked = uiState.stopOnHeadsetDisconnect,
+                        onCheckedChange = { viewModel.setStopOnHeadsetDisconnect(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
+                    )
+                }
+
+                HorizontalDivider(color = Color(0x15FFFFFF))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Auto-Resume on Bluetooth", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Automatically resume last station when trusted car/headset reconnects", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    Switch(
+                        checked = uiState.autoResumeOnBluetooth,
+                        onCheckedChange = { viewModel.setAutoResumeOnBluetooth(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
+                    )
+                }
+
+                HorizontalDivider(color = Color(0x15FFFFFF))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Prefer High-Quality Audio (320k)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        Text("Request highest bitrate audio chunks when multi-bitrate HLS streams exist", fontSize = 11.sp, color = Color.Gray)
+                    }
+                    Switch(
+                        checked = uiState.highQualityAudio,
+                        onCheckedChange = { viewModel.setHighQualityAudio(it) },
+                        colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
+                    )
+                }
             }
         }
     }

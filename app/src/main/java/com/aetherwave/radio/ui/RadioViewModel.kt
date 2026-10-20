@@ -76,6 +76,7 @@ data class RadioUiState(
     val selectedGroup: String = "All",
     val themeColorHex: String = "#F59E0B",
     val backgroundColorHex: String = "#090D16",
+    val cardColorHex: String = "#111726",
     val themeMode: String = "dark", // "dark", "light", "system"
     val isMonetEnabled: Boolean = false,
     val isMuted: Boolean = false,
@@ -141,6 +142,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             currentStation = initialStation,
             themeColorHex = prefs.getString("theme_color", "#F59E0B") ?: "#F59E0B",
             backgroundColorHex = prefs.getString("bg_color", "#090D16") ?: "#090D16",
+            cardColorHex = prefs.getString("card_color", "#111726") ?: "#111726",
             themeMode = prefs.getString("theme_mode", "dark") ?: "dark",
             isMonetEnabled = prefs.getBoolean("monet_enabled", false),
             selectedGroup = prefs.getString("selected_genre_group", "All") ?: "All",
@@ -293,6 +295,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             SortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
             SortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
             SortOption.FAVORITES_FIRST -> list.sortedByDescending { it.isFavorite }
+            SortOption.RECENTLY_PLAYED -> list
             SortOption.CUSTOM -> list
         }
 
@@ -506,6 +509,129 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("theme_mode", mode).apply()
     }
 
+    fun setCardColor(hex: String) {
+        _uiState.value = _uiState.value.copy(cardColorHex = hex)
+        prefs.edit().putString("card_color", hex).apply()
+    }
+
+    fun setBufferSize(size: String) {
+        _uiState.value = _uiState.value.copy(bufferSize = size)
+        prefs.edit().putString("buffer_size", size).apply()
+    }
+
+    fun setStopOnHeadsetDisconnect(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(stopOnHeadsetDisconnect = enabled)
+        prefs.edit().putBoolean("stop_on_disconnect", enabled).apply()
+    }
+
+    fun setHighQualityAudio(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(highQualityAudio = enabled)
+        prefs.edit().putBoolean("high_quality", enabled).apply()
+    }
+
+    fun reorderStations(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        val current = _stations.value.toMutableList()
+        if (fromIndex in current.indices && toIndex in current.indices) {
+            val item = current.removeAt(fromIndex)
+            current.add(toIndex, item)
+            _stations.value = current
+            saveStationsToPrefs(current)
+        }
+    }
+
+    fun reorderGenres(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex) return
+        val current = _genres.value.toMutableList()
+        if (fromIndex in current.indices && toIndex in current.indices) {
+            val item = current.removeAt(fromIndex)
+            current.add(toIndex, item)
+            _genres.value = current
+            saveGenresToPrefs(current)
+        }
+    }
+
+    fun exportStationsJson(): String {
+        return gson.toJson(_stations.value)
+    }
+
+    fun importStationsJson(jsonStr: String): Boolean {
+        return try {
+            val type = object : TypeToken<List<Station>>() {}.type
+            val imported: List<Station> = gson.fromJson(jsonStr, type)
+            if (imported.isNotEmpty()) {
+                val merged = (_stations.value + imported).distinctBy { it.id }
+                _stations.value = merged
+                saveStationsToPrefs(merged)
+                true
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun restoreDefaultStations() {
+        val defaultList = DefaultStations.STATIONS
+        _stations.value = defaultList
+        saveStationsToPrefs(defaultList)
+    }
+
+    fun setAutoResumeOnBluetooth(enabled: Boolean) {
+        _uiState.value = _uiState.value.copy(autoResumeOnBluetooth = enabled)
+        prefs.edit().putBoolean("auto_resume_bt", enabled).apply()
+    }
+
+    fun setSyncRoomCode(code: String) {
+        _uiState.value = _uiState.value.copy(syncRoomCode = code)
+        prefs.edit().putString("sync_room", code).apply()
+    }
+
+    fun generateSyncRoomCode() {
+        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        val code = "RADIO-" + (1..4).map { chars.random() }.joinToString("")
+        setSyncRoomCode(code)
+    }
+
+    fun testAlarmInSeconds(seconds: Int = 5) {
+        val context = getApplication<Application>()
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val targetStationId = _uiState.value.alarmStationId ?: _stations.value.firstOrNull()?.id
+        val intent = Intent(context, AlarmReceiver::class.java).apply {
+            action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
+            putExtra("station_id", targetStationId)
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            1002,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val triggerTime = System.currentTimeMillis() + (seconds * 1000L)
+        try {
+            val showIntent = PendingIntent.getActivity(
+                context,
+                0,
+                Intent(context, MainActivity::class.java),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val clockInfo = AlarmManager.AlarmClockInfo(triggerTime, showIntent)
+            alarmManager.setAlarmClock(clockInfo, pendingIntent)
+            Log.d("RadioViewModel", "Test alarm scheduled for $seconds seconds from now")
+        } catch (e: Exception) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                } else {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime, pendingIntent)
+                }
+            } catch (ex: Exception) {
+                Log.e("RadioViewModel", "Failed to schedule test alarm: ${ex.message}", ex)
+            }
+        }
+    }
+
     fun setMonetEnabled(enabled: Boolean) {
         _uiState.value = _uiState.value.copy(isMonetEnabled = enabled)
         prefs.edit().putBoolean("monet_enabled", enabled).apply()
@@ -573,38 +699,23 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    if (alarmManager.canScheduleExactAlarms()) {
-                        alarmManager.setExactAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            calendar.timeInMillis,
-                            pendingIntent
-                        )
-                    } else {
-                        alarmManager.setAndAllowWhileIdle(
-                            AlarmManager.RTC_WAKEUP,
-                            calendar.timeInMillis,
-                            pendingIntent
-                        )
-                    }
-                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                } else {
-                    alarmManager.setExact(
-                        AlarmManager.RTC_WAKEUP,
-                        calendar.timeInMillis,
-                        pendingIntent
-                    )
-                }
-                Log.d("RadioViewModel", "Scheduled background alarm for ${calendar.time}")
+                val showIntent = PendingIntent.getActivity(
+                    context,
+                    0,
+                    Intent(context, MainActivity::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val clockInfo = AlarmManager.AlarmClockInfo(calendar.timeInMillis, showIntent)
+                alarmManager.setAlarmClock(clockInfo, pendingIntent)
+                Log.d("RadioViewModel", "Scheduled background alarm with setAlarmClock for ${calendar.time}")
             } catch (e: Exception) {
-                Log.w("RadioViewModel", "Alarm scheduling fallback: ${e.message}")
+                Log.w("RadioViewModel", "Alarm scheduling setAlarmClock fallback: ${e.message}")
                 try {
-                    alarmManager.set(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                    } else {
+                        alarmManager.setExact(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                    }
                 } catch (ex: Exception) {
                     Log.e("RadioViewModel", "Failed to schedule alarm: ${ex.message}", ex)
                 }
