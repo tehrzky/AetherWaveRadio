@@ -104,7 +104,8 @@ data class RadioUiState(
     val bufferSize: String = "Medium",
     val stopOnHeadsetDisconnect: Boolean = true,
     val autoResumeOnBluetooth: Boolean = false,
-    val highQualityAudio: Boolean = true
+    val highQualityAudio: Boolean = true,
+    val openedSettingsFromDeck: Boolean = false
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
@@ -124,6 +125,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
 
     private val savedStationId = prefs.getString("last_played_station_id", null)
     private val initialStation = _stations.value.firstOrNull { it.id == savedStationId }
+    private var pendingPlayStation: Station? = null
 
     // Scraped Radio Browser autocomplete suggestions
     private val _searchSuggestions = MutableStateFlow<List<ScrapedRadioStation>>(emptyList())
@@ -238,6 +240,10 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                 })
 
                 syncPlayerState()
+                pendingPlayStation?.let { pending ->
+                    playStation(pending)
+                    pendingPlayStation = null
+                }
             } catch (e: Exception) {
                 Log.e("RadioViewModel", "Error connecting MediaController: ${e.message}", e)
             }
@@ -287,7 +293,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             SortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
             SortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
             SortOption.FAVORITES_FIRST -> list.sortedByDescending { it.isFavorite }
-            SortOption.RECENTLY_PLAYED -> list
             SortOption.CUSTOM -> list
         }
 
@@ -295,6 +300,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun playStation(station: Station) {
+        if (station.streamUrl.isBlank()) return
         _uiState.value = _uiState.value.copy(
             currentStation = station,
             isLoading = true
@@ -302,11 +308,14 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("last_played_station_id", station.id).apply()
 
         try {
-            mediaController?.let { player ->
+            val controller = mediaController
+            if (controller != null) {
                 val mediaItem = RadioPlaybackService.buildMediaItem(station)
-                player.setMediaItem(mediaItem)
-                player.prepare()
-                player.play()
+                controller.setMediaItem(mediaItem)
+                controller.prepare()
+                controller.play()
+            } else {
+                pendingPlayStation = station
             }
         } catch (e: Exception) {
             Log.e("RadioViewModel", "Error starting playback for ${station.name}: ${e.message}", e)
@@ -418,15 +427,23 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = _uiState.value.copy(isDeckOpen = false)
     }
 
-    fun openSettingsPage(subPage: SettingsSubPage? = null) {
+    fun openSettingsPage(subPage: SettingsSubPage? = null, fromDeck: Boolean = false) {
         _uiState.value = _uiState.value.copy(
             isSettingsPageOpen = true,
-            currentSettingsSubPage = subPage
+            currentSettingsSubPage = subPage,
+            openedSettingsFromDeck = fromDeck
         )
     }
 
     fun closeSettingsPage() {
-        if (_uiState.value.currentSettingsSubPage != null) {
+        if (_uiState.value.openedSettingsFromDeck) {
+            _uiState.value = _uiState.value.copy(
+                isSettingsPageOpen = false,
+                currentSettingsSubPage = null,
+                openedSettingsFromDeck = false,
+                isDeckOpen = true
+            )
+        } else if (_uiState.value.currentSettingsSubPage != null) {
             _uiState.value = _uiState.value.copy(currentSettingsSubPage = null)
         } else {
             _uiState.value = _uiState.value.copy(
@@ -556,7 +573,21 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (alarmManager.canScheduleExactAlarms()) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            calendar.timeInMillis,
+                            pendingIntent
+                        )
+                    } else {
+                        alarmManager.setAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            calendar.timeInMillis,
+                            pendingIntent
+                        )
+                    }
+                } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         calendar.timeInMillis,
@@ -570,8 +601,13 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
                 Log.d("RadioViewModel", "Scheduled background alarm for ${calendar.time}")
-            } catch (e: SecurityException) {
-                Log.w("RadioViewModel", "Exact alarm permission missing: ${e.message}")
+            } catch (e: Exception) {
+                Log.w("RadioViewModel", "Alarm scheduling fallback: ${e.message}")
+                try {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+                } catch (ex: Exception) {
+                    Log.e("RadioViewModel", "Failed to schedule alarm: ${ex.message}", ex)
+                }
             }
         } else {
             alarmManager.cancel(pendingIntent)

@@ -20,7 +20,7 @@ class SleepTimerManager(
     private val _timerState = MutableStateFlow(SleepTimerState())
     val timerState: StateFlow<SleepTimerState> = _timerState.asStateFlow()
 
-    fun startTimer(minutes: Int, fadeOut: Boolean = true) {
+    fun startTimer(minutes: Int, fadeOut: Boolean) {
         cancelTimer()
         val totalMs = minutes * 60 * 1000L
 

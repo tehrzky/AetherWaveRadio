@@ -60,7 +60,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
-import com.aetherwave.radio.util.BluetoothDeviceInfo
 import com.aetherwave.radio.data.DefaultStations
 import com.aetherwave.radio.data.SortOption
 import com.aetherwave.radio.data.Station
@@ -434,7 +433,6 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                     SortOption.NAME_ASC -> "A - Z"
                                     SortOption.NAME_DESC -> "Z - A"
                                     SortOption.FAVORITES_FIRST -> "Favorites"
-                                    SortOption.RECENTLY_PLAYED -> "Recent"
                                 },
                                 fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -470,13 +468,6 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                                 text = { Text("Favorites First") },
                                 onClick = {
                                     viewModel.setSortOption(SortOption.FAVORITES_FIRST)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Recently Played") },
-                                onClick = {
-                                    viewModel.setSortOption(SortOption.RECENTLY_PLAYED)
                                     showSortMenu = false
                                 }
                             )
@@ -1133,13 +1124,13 @@ fun ExpandedMasterDeckDialog(
                         }
 
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onOpenEqualizer) {
+                            IconButton(onClick = { viewModel.openSettingsPage(SettingsSubPage.EQUALIZER, fromDeck = true) }) {
                                 Icon(Icons.Default.Tune, contentDescription = "Equalizer", tint = accentColor, modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { viewModel.openSettingsPage(SettingsSubPage.BLUETOOTH) }) {
+                            IconButton(onClick = { viewModel.openSettingsPage(SettingsSubPage.BLUETOOTH, fromDeck = true) }) {
                                 Icon(Icons.Default.Bluetooth, contentDescription = "Bluetooth", tint = Color(0xFF60A5FA), modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { viewModel.openSettingsPage() }) {
+                            IconButton(onClick = { viewModel.openSettingsPage(null, fromDeck = true) }) {
                                 Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.LightGray, modifier = Modifier.size(20.dp))
                             }
                             IconButton(onClick = onClose) {
@@ -1374,7 +1365,7 @@ fun ExpandedMasterDeckDialog(
                                 modifier = Modifier
                                     .weight(1f)
                                     .fillMaxHeight()
-                                    .clickable { onOpenAlarm() },
+                                    .clickable { viewModel.openSettingsPage(SettingsSubPage.ALARM_CLOCK, fromDeck = true) },
                                 horizontalArrangement = Arrangement.Center,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -2164,6 +2155,53 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 }
             }
         }
+
+        // Custom Hex Color Inputs
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Custom Hex Colors", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+
+                var customAccentText by remember { mutableStateOf(uiState.themeColorHex) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Accent:", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.width(70.dp))
+                    OutlinedTextField(
+                        value = customAccentText,
+                        onValueChange = {
+                            customAccentText = it
+                            if (it.matches(Regex("^#[0-9A-Fa-f]{6}$"))) {
+                                viewModel.setThemeColor(it)
+                            }
+                        },
+                        placeholder = { Text("#F59E0B", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(parseHexColor(uiState.themeColorHex)).border(1.dp, Color.White, CircleShape))
+                }
+
+                var customBgText by remember { mutableStateOf(uiState.backgroundColorHex) }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Canvas BG:", fontSize = 11.sp, color = Color.Gray, modifier = Modifier.width(70.dp))
+                    OutlinedTextField(
+                        value = customBgText,
+                        onValueChange = {
+                            customBgText = it
+                            if (it.matches(Regex("^#[0-9A-Fa-f]{6}$"))) {
+                                viewModel.setBackgroundColor(it)
+                            }
+                        },
+                        placeholder = { Text("#090D16", fontSize = 11.sp) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(parseHexColor(uiState.backgroundColorHex)).border(1.dp, Color.White, CircleShape))
+                }
+            }
+        }
     }
 }
 
@@ -2524,74 +2562,64 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
             }
         }
 
-        // ONE CLEAN ACTION ROW: Text Input + [ + Add ] + [ ↕ Arrange ] + [ ✓ Select ]
+        // UNIFIED ACTION ROW: Input + Add + Arrange + Select (No Wrapping!)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // Add input row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier
+                    .padding(10.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                OutlinedTextField(
+                    value = newGenreText,
+                    onValueChange = { newGenreText = it },
+                    placeholder = { Text("Genre...", fontSize = 12.sp) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = {
+                        if (newGenreText.isNotBlank()) {
+                            viewModel.addGenre(newGenreText.trim())
+                            newGenreText = ""
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    OutlinedTextField(
-                        value = newGenreText,
-                        onValueChange = { newGenreText = it },
-                        placeholder = { Text("New genre name...", fontSize = 12.sp) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Button(
-                        onClick = {
-                            if (newGenreText.isNotBlank()) {
-                                viewModel.addGenre(newGenreText.trim())
-                                newGenreText = ""
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text("+ Add", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
+                    Text("+ Add", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
-
-                // Action buttons: Arrange & Select
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Button(
+                    onClick = { viewModel.toggleGenreArrangeMode() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.isGenreArrangeMode) accentColor else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (uiState.isGenreArrangeMode) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    // Arrange Button
-                    Button(
-                        onClick = { viewModel.toggleGenreArrangeMode() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.isGenreArrangeMode) accentColor else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (uiState.isGenreArrangeMode) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (uiState.isGenreArrangeMode) "Done" else "Arrange Order", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Select Button
-                    Button(
-                        onClick = { viewModel.toggleGenreSelectMode() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (uiState.isGenreSelectMode) Color(0xFFEF4444) else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (uiState.isGenreSelectMode) "Cancel" else "Select to Delete", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+                    Icon(Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(if (uiState.isGenreArrangeMode) "Done" else "Arrange", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+                Button(
+                    onClick = { viewModel.toggleGenreSelectMode() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (uiState.isGenreSelectMode) Color(0xFFEF4444) else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (uiState.isGenreSelectMode) Color.White else MaterialTheme.colorScheme.onSurface
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Icon(if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(if (uiState.isGenreSelectMode) "Done" else "Select", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2975,10 +3003,10 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
 // 6. Bluetooth Subpage
 @Composable
 fun BluetoothSubPage(viewModel: RadioViewModel, accentColor: Color) {
-    val isAvailable: Boolean by viewModel.bluetoothHelper.isAvailable.collectAsState()
-    val isEnabled: Boolean by viewModel.bluetoothHelper.isEnabled.collectAsState()
-    val pairedDevices: List<BluetoothDeviceInfo> by viewModel.bluetoothHelper.pairedDevices.collectAsState()
-    val connectedDevice: BluetoothDeviceInfo? by viewModel.bluetoothHelper.connectedDevice.collectAsState()
+    val isAvailable by viewModel.bluetoothHelper.isAvailable.collectAsState()
+    val isEnabled by viewModel.bluetoothHelper.isEnabled.collectAsState()
+    val pairedDevices by viewModel.bluetoothHelper.pairedDevices.collectAsState()
+    val connectedDevice by viewModel.bluetoothHelper.connectedDevice.collectAsState()
 
     Column(
         modifier = Modifier
@@ -3141,6 +3169,7 @@ fun EqualizerDialog(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = 580.dp)
                 .padding(vertical = 12.dp)
         ) {
             Column(
@@ -3158,13 +3187,15 @@ fun EqualizerDialog(
                     }
                 }
 
-                EqualizerSubPage(viewModel, accentColor)
+                Box(modifier = Modifier.weight(1f, fill = false)) {
+                    EqualizerSubPage(viewModel, accentColor)
+                }
             }
         }
     }
 }
 
-// Wake-up Alarm Clock Modal Dialog (Fixed: No nested scroll crash!)
+// Wake-up Alarm Clock Modal Dialog (Fixed: Bounded height prevents scroll measurement crash!)
 @Composable
 fun WakeUpAlarmDialog(
     viewModel: RadioViewModel,
@@ -3177,6 +3208,7 @@ fun WakeUpAlarmDialog(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier
                 .fillMaxWidth()
+                .heightIn(max = 580.dp)
                 .padding(vertical = 12.dp)
         ) {
             Column(
@@ -3194,7 +3226,9 @@ fun WakeUpAlarmDialog(
                     }
                 }
 
-                AlarmClockSubPage(viewModel, accentColor)
+                Box(modifier = Modifier.weight(1f, fill = false)) {
+                    AlarmClockSubPage(viewModel, accentColor)
+                }
             }
         }
     }
@@ -3280,7 +3314,7 @@ fun SleepTimerDialog(
 
                     Button(
                         onClick = {
-                            viewModel.sleepTimerManager.startTimer(selectedMins, fadeOut = true)
+                            viewModel.sleepTimerManager.startTimer(selectedMins)
                             onClose()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),

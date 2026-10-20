@@ -17,7 +17,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.aetherwave.radio.data.DefaultStations
 import com.aetherwave.radio.data.Station
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 class RadioPlaybackService : MediaSessionService() {
 
@@ -29,6 +32,7 @@ class RadioPlaybackService : MediaSessionService() {
         const val ACTION_PLAY_ALARM = "com.aetherwave.radio.ACTION_PLAY_ALARM"
 
         fun buildMediaItem(station: Station): MediaItem {
+            val cleanUrl = station.streamUrl.trim()
             val metadata = MediaMetadata.Builder()
                 .setTitle(station.name)
                 .setArtist(station.group)
@@ -41,7 +45,7 @@ class RadioPlaybackService : MediaSessionService() {
                 .build()
 
             return MediaItem.Builder()
-                .setUri(station.streamUrl)
+                .setUri(cleanUrl)
                 .setMediaId(station.id)
                 .setMediaMetadata(metadata)
                 .build()
@@ -82,6 +86,36 @@ class RadioPlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player!!)
             .build()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_PLAY_ALARM) {
+            val stationId = intent.getStringExtra("station_id")
+            val prefs = getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
+            val json = prefs.getString("saved_stations_json", null)
+            val stations: List<Station> = try {
+                if (!json.isNullOrEmpty()) {
+                    Gson().fromJson(json, object : TypeToken<List<Station>>() {}.type)
+                } else {
+                    DefaultStations.STATIONS
+                }
+            } catch (e: Exception) {
+                DefaultStations.STATIONS
+            }
+            val target = stations.firstOrNull { it.id == stationId } ?: stations.firstOrNull()
+            if (target != null && player != null) {
+                try {
+                    val mediaItem = buildMediaItem(target)
+                    player?.setMediaItem(mediaItem)
+                    player?.prepare()
+                    player?.play()
+                    Log.d("RadioPlaybackService", "Started alarm playback for station: ${target.name}")
+                } catch (e: Exception) {
+                    Log.e("RadioPlaybackService", "Error starting alarm stream: ${e.message}", e)
+                }
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
     }
 
     private fun createNotificationChannel() {
