@@ -386,7 +386,11 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     fun closeDeck() { _uiState.value = _uiState.value.copy(isDeckOpen = false) }
 
     fun openSettingsPage(subPage: SettingsSubPage? = null, fromDeck: Boolean = false) {
-        _uiState.value = _uiState.value.copy(isSettingsPageOpen = true, currentSettingsSubPage = subPage, openedSettingsFromDeck = fromDeck)
+        _uiState.value = _uiState.value.copy(
+            isSettingsPageOpen = true,
+            currentSettingsSubPage = subPage,
+            isDeckOpen = if (fromDeck) true else false
+        )
     }
 
     fun closeSettingsPage() {
