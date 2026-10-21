@@ -102,6 +102,7 @@ class MainActivity : ComponentActivity() {
                 accentColorHex = uiState.themeColorHex,
                 backgroundColorHex = uiState.backgroundColorHex,
                 cardColorHex = uiState.cardColorHex,
+                themeFontStyle = uiState.themeFontStyle,
                 themeMode = uiState.themeMode,
                 isMonet = uiState.isMonetEnabled
             ) {
