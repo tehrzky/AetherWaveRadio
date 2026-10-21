@@ -2069,359 +2069,502 @@ fun SettingsOptionRow(
     }
 }
 
-// 1. Appearance & Themes Subpage (Background Color, Accent, Monet, Presets)
-// ============================================================
-// PHASE 3: APPEARANCE — full color picker + presets + font
+
+// PHASE 3c — Compact tabbed Appearance screen
+// Preview pinned on top · Tabs on bottom · Wheel-picker on tap
 // ============================================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val uiState by viewModel.uiState.collectAsState()
-    val context = LocalContext.current
 
-    // Local editing state — doesn't apply until user taps Apply or Save
+    // Local edit state — nothing applied until "Apply" is tapped
     var editingAccent by remember(uiState.themeColorHex) { mutableStateOf(uiState.themeColorHex) }
     var editingBg by remember(uiState.backgroundColorHex) { mutableStateOf(uiState.backgroundColorHex) }
     var editingCard by remember(uiState.cardColorHex) { mutableStateOf(uiState.cardColorHex) }
+    var editingFontColor by remember(uiState.themeFontColorHex) { mutableStateOf(uiState.themeFontColorHex) }
     var editingFont by remember(uiState.themeFontStyle) { mutableStateOf(uiState.themeFontStyle) }
 
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Colors, 1 = Font, 2 = Presets
+    var pickerTarget by remember { mutableStateOf<String?>(null) } // "accent" | "bg" | "card" | "font"
     var showSaveDialog by remember { mutableStateOf(false) }
     var presetNameInput by remember { mutableStateOf("") }
+
+    val activeFont = resolveFontFamily(editingFont)
+    val previewAccent = parseHexColor(editingAccent)
+    val previewBg = parseHexColor(editingBg)
+    val previewCard = parseHexColor(editingCard)
+    val previewFontColor = if (editingFontColor.equals("auto", ignoreCase = true))
+        if (previewCard.luminance() > 0.5f) Color(0xFF0F172A) else Color(0xFFF1F5F9)
+    else parseHexColor(editingFontColor, Color(0xFFF1F5F9))
+
+    val changesMade = editingAccent != uiState.themeColorHex ||
+            editingBg != uiState.backgroundColorHex ||
+            editingCard != uiState.cardColorHex ||
+            editingFontColor != uiState.themeFontColorHex ||
+            editingFont != uiState.themeFontStyle
 
     fun applyAll() {
         viewModel.setThemeColor(editingAccent)
         viewModel.setBackgroundColor(editingBg)
         viewModel.setCardColor(editingCard)
+        viewModel.setFontColor(editingFontColor)
         viewModel.setFontStyle(editingFont)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        // -------- LIVE PREVIEW --------
+    Column(modifier = Modifier.fillMaxSize()) {
+
+        // ---------- PINNED PREVIEW ----------
         Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = parseHexColor(editingBg)),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = previewBg),
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(20.dp))
+                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(24.dp))
         ) {
-            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    "LIVE PREVIEW",
-                    fontSize = 10.sp,
-                    letterSpacing = 2.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = parseHexColor(editingAccent)
-                )
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "LIVE PREVIEW",
+                        fontSize = 10.sp,
+                        letterSpacing = 2.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = previewAccent,
+                        fontFamily = activeFont
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(previewAccent.copy(alpha = 0.15f))
+                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            if (editingFontColor.equals("auto", ignoreCase = true)) "AUTO" else "MANUAL",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = previewAccent,
+                            fontFamily = activeFont
+                        )
+                    }
+                }
                 Text(
                     "AetherWave Radio",
-                    fontSize = 22.sp,
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = resolveFontFamily(editingFont),
-                    color = Color(0xFFF1F5F9)
+                    fontFamily = activeFont,
+                    color = previewFontColor
                 )
                 Text(
                     "This is how your app will look",
                     fontSize = 12.sp,
-                    fontFamily = resolveFontFamily(editingFont),
-                    color = Color(0xFFCBD5E1)
+                    fontFamily = activeFont,
+                    color = previewFontColor.copy(alpha = 0.75f)
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(parseHexColor(editingAccent))
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .background(previewAccent)
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
                     ) {
-                        Text(
-                            "Play",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = resolveFontFamily(editingFont),
-                            color = Color(0xFF090D16)
-                        )
+                        Text("Play", fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = Color(0xFF090D16))
                     }
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(parseHexColor(editingCard))
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .background(previewCard)
+                            .border(1.dp, previewFontColor.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 7.dp)
                     ) {
-                        Text(
-                            "Station",
-                            fontSize = 13.sp,
-                            fontFamily = resolveFontFamily(editingFont),
-                            color = Color(0xFFF1F5F9)
-                        )
+                        Text("Station", fontSize = 12.sp, fontFamily = activeFont, color = previewFontColor)
                     }
                 }
             }
         }
 
-        // -------- COLOR PICKERS --------
-        Text("Colors", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(editingFont))
-        ColorRow(
-            label = "Accent",
-            value = editingAccent,
-            onChange = { editingAccent = it },
-            fontStyle = editingFont
-        )
-        ColorRow(
-            label = "Background",
-            value = editingBg,
-            onChange = { editingBg = it },
-            fontStyle = editingFont
-        )
-        ColorRow(
-            label = "Cards",
-            value = editingCard,
-            onChange = { editingCard = it },
-            fontStyle = editingFont
-        )
+        Spacer(modifier = Modifier.height(14.dp))
 
-        // -------- FONT --------
-        Text("Font", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(editingFont))
+        // ---------- TAB ROW ----------
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(18.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono").forEach { (key, label) ->
-                val sel = editingFont == key
+            listOf("Colors", "Font", "Presets").forEachIndexed { idx, label ->
+                val sel = selectedTab == idx
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(if (sel) parseHexColor(editingAccent) else MaterialTheme.colorScheme.surface)
-                        .clickable { editingFont = key }
-                        .padding(vertical = 12.dp),
+                        .background(if (sel) previewAccent else Color.Transparent)
+                        .clickable { selectedTab = idx }
+                        .padding(vertical = 10.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         label,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        fontFamily = resolveFontFamily(key),
+                        fontFamily = activeFont,
                         color = if (sel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
         }
 
-        // -------- BUILT-IN QUICK PRESETS --------
-        Text("Quick Presets", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(editingFont))
-        Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            QuickPreset(
-                name = "Studio Amber", accent = "#F59E0B", bg = "#090D16", card = "#111726",
-                currentAccent = editingAccent, currentBg = editingBg, currentCard = editingCard,
-                onClick = { editingAccent = "#F59E0B"; editingBg = "#090D16"; editingCard = "#111726" }
-            )
-            QuickPreset(
-                name = "Cyber Cyan", accent = "#06B6D4", bg = "#000000", card = "#0F172A",
-                currentAccent = editingAccent, currentBg = editingBg, currentCard = editingCard,
-                onClick = { editingAccent = "#06B6D4"; editingBg = "#000000"; editingCard = "#0F172A" }
-            )
-            QuickPreset(
-                name = "Emerald", accent = "#10B981", bg = "#0A1D1A", card = "#0E2420",
-                currentAccent = editingAccent, currentBg = editingBg, currentCard = editingCard,
-                onClick = { editingAccent = "#10B981"; editingBg = "#0A1D1A"; editingCard = "#0E2420" }
-            )
-            QuickPreset(
-                name = "Magenta", accent = "#EC4899", bg = "#1A0A18", card = "#2A0F26",
-                currentAccent = editingAccent, currentBg = editingBg, currentCard = editingCard,
-                onClick = { editingAccent = "#EC4899"; editingBg = "#1A0A18"; editingCard = "#2A0F26" }
-            )
-            QuickPreset(
-                name = "Pearl", accent = "#F59E0B", bg = "#F8FAFC", card = "#FFFFFF",
-                currentAccent = editingAccent, currentBg = editingBg, currentCard = editingCard,
-                onClick = { editingAccent = "#F59E0B"; editingBg = "#F8FAFC"; editingCard = "#FFFFFF" }
-            )
-        }
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // -------- APPLY BUTTON --------
-        val changesMade = editingAccent != uiState.themeColorHex ||
-                editingBg != uiState.backgroundColorHex ||
-                editingCard != uiState.cardColorHex ||
-                editingFont != uiState.themeFontStyle
+        // ---------- TAB CONTENT ----------
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                // ============= COLORS TAB =============
+                0 -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    ModernColorRow(
+                        label = "Accent",
+                        hex = editingAccent,
+                        fontStyle = editingFont,
+                        onTap = { pickerTarget = "accent" }
+                    )
+                    ModernColorRow(
+                        label = "Background",
+                        hex = editingBg,
+                        fontStyle = editingFont,
+                        onTap = { pickerTarget = "bg" }
+                    )
+                    ModernColorRow(
+                        label = "Cards",
+                        hex = editingCard,
+                        fontStyle = editingFont,
+                        onTap = { pickerTarget = "card" }
+                    )
+                    ModernColorRow(
+                        label = "Font Color",
+                        hex = editingFontColor,
+                        fontStyle = editingFont,
+                        isAuto = editingFontColor.equals("auto", ignoreCase = true),
+                        onTap = { pickerTarget = "font" },
+                        onAutoReset = { editingFontColor = "auto" }
+                    )
+                }
 
-        Button(
-            onClick = { applyAll() },
-            enabled = changesMade,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = parseHexColor(editingAccent),
-                contentColor = Color(0xFF090D16),
-                disabledContainerColor = Color(0x33FFFFFF),
-                disabledContentColor = Color(0x88FFFFFF)
-            ),
-            shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth().height(50.dp)
-        ) {
-            Text(
-                if (changesMade) "Apply Changes" else "No Changes Yet",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = resolveFontFamily(editingFont)
-            )
-        }
+                // ============= FONT TAB =============
+                1 -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Font Family", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono").forEach { (key, label) ->
+                            val sel = editingFont == key
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (sel) previewAccent else MaterialTheme.colorScheme.surface)
+                                    .border(1.dp, if (sel) previewAccent else Color(0x15FFFFFF), RoundedCornerShape(14.dp))
+                                    .clickable { editingFont = key }
+                                    .padding(vertical = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = resolveFontFamily(key),
+                                    color = if (sel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    }
 
-        // -------- SAVED PRESETS --------
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("My Saved Presets", fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(editingFont))
-            TextButton(onClick = { presetNameInput = ""; showSaveDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = parseHexColor(editingAccent), modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Save Current", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = parseHexColor(editingAccent), fontFamily = resolveFontFamily(editingFont))
-            }
-        }
-
-        if (uiState.savedThemePresets.isEmpty()) {
-            Card(
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp).fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(Icons.Default.Palette, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(32.dp))
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text("No saved presets yet", fontSize = 12.sp, color = Color.Gray, fontFamily = resolveFontFamily(editingFont))
-                    Text("Design a theme and tap Save Current", fontSize = 11.sp, color = Color.DarkGray, fontFamily = resolveFontFamily(editingFont))
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Sample", fontSize = 10.sp, letterSpacing = 1.sp, color = Color.Gray, fontFamily = activeFont)
+                            Text("The quick brown fox jumps over the lazy dog", fontSize = 14.sp, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
+                            Text("1234567890 · AetherWave Studio", fontSize = 12.sp, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // ============= PRESETS TAB =============
+                2 -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Quick Presets", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CompactPresetChip("Studio Amber", "#F59E0B", "#090D16", "#111726", editingAccent, editingBg, editingCard, activeFont) {
+                            editingAccent = "#F59E0B"; editingBg = "#090D16"; editingCard = "#111726"
+                        }
+                        CompactPresetChip("Cyber Cyan", "#06B6D4", "#000000", "#0F172A", editingAccent, editingBg, editingCard, activeFont) {
+                            editingAccent = "#06B6D4"; editingBg = "#000000"; editingCard = "#0F172A"
+                        }
+                        CompactPresetChip("Emerald", "#10B981", "#0A1D1A", "#0E2420", editingAccent, editingBg, editingCard, activeFont) {
+                            editingAccent = "#10B981"; editingBg = "#0A1D1A"; editingCard = "#0E2420"
+                        }
+                        CompactPresetChip("Magenta", "#EC4899", "#1A0A18", "#2A0F26", editingAccent, editingBg, editingCard, activeFont) {
+                            editingAccent = "#EC4899"; editingBg = "#1A0A18"; editingCard = "#2A0F26"
+                        }
+                        CompactPresetChip("Pearl", "#F59E0B", "#F8FAFC", "#FFFFFF", editingAccent, editingBg, editingCard, activeFont) {
+                            editingAccent = "#F59E0B"; editingBg = "#F8FAFC"; editingCard = "#FFFFFF"
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("My Saved Presets", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
+                        TextButton(onClick = { presetNameInput = ""; showSaveDialog = true }) {
+                            Icon(Icons.Default.Add, contentDescription = null, tint = previewAccent, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save Current", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = previewAccent, fontFamily = activeFont)
+                        }
+                    }
+
+                    if (uiState.savedThemePresets.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(20.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Palette, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(28.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text("No saved presets yet", fontSize = 11.sp, color = Color.Gray, fontFamily = activeFont)
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            uiState.savedThemePresets.forEach { preset ->
+                                CompactSavedPreset(
+                                    preset = preset,
+                                    isActive = preset.id == uiState.activeThemePresetId,
+                                    fontStyle = editingFont,
+                                    onApply = {
+                                        viewModel.applyPreset(preset.id)
+                                        editingAccent = preset.accentHex
+                                        editingBg = preset.backgroundHex
+                                        editingCard = preset.cardHex
+                                        editingFontColor = preset.fontColorHex
+                                        editingFont = preset.fontStyle
+                                    },
+                                    onDelete = { viewModel.deletePreset(preset.id) }
+                                )
+                            }
+                        }
+                    }
                 }
             }
-        } else {
-            uiState.savedThemePresets.forEach { preset ->
-                SavedPresetRow(
-                    preset = preset,
-                    isActive = preset.id == uiState.activeThemePresetId,
-                    fontStyle = editingFont,
-                    onApply = {
-                        viewModel.applyPreset(preset.id)
-                        editingAccent = preset.accentHex
-                        editingBg = preset.backgroundHex
-                        editingCard = preset.cardHex
-                        editingFont = preset.fontStyle
-                    },
-                    onDelete = { viewModel.deletePreset(preset.id) }
+        }
+
+        // ---------- PINNED ACTIONS ----------
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = {
+                    editingAccent = uiState.themeColorHex
+                    editingBg = uiState.backgroundColorHex
+                    editingCard = uiState.cardColorHex
+                    editingFontColor = uiState.themeFontColorHex
+                    editingFont = uiState.themeFontStyle
+                },
+                enabled = changesMade,
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1f).height(48.dp)
+            ) {
+                Text("Reset", fontSize = 13.sp, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
+            }
+            Button(
+                onClick = { applyAll() },
+                enabled = changesMade,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = previewAccent,
+                    contentColor = Color(0xFF090D16),
+                    disabledContainerColor = Color(0x22FFFFFF),
+                    disabledContentColor = Color(0x66FFFFFF)
+                ),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.weight(1.5f).height(48.dp)
+            ) {
+                Text(
+                    if (changesMade) "Apply Changes" else "No Changes",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = activeFont
                 )
             }
         }
-
-        Spacer(modifier = Modifier.height(24.dp))
     }
 
-    // -------- SAVE DIALOG --------
+    // ---------- COLOR PICKER DIALOG ----------
+    pickerTarget?.let { target ->
+        val currentHex = when (target) {
+            "accent" -> editingAccent
+            "bg" -> editingBg
+            "card" -> editingCard
+            "font" -> if (editingFontColor.equals("auto", ignoreCase = true)) editingFontColor.let { "auto" } else editingFontColor
+            else -> "#000000"
+        }
+        val startHex = if (currentHex.equals("auto", ignoreCase = true)) "#F1F5F9" else currentHex
+        val title = when (target) {
+            "accent" -> "Pick Accent Color"
+            "bg" -> "Pick Background Color"
+            "card" -> "Pick Card Color"
+            "font" -> "Pick Font Color"
+            else -> "Pick Color"
+        }
+        ColorPickerDialog(
+            title = title,
+            initialHex = startHex,
+            onDismiss = { pickerTarget = null },
+            onPick = { newHex ->
+                when (target) {
+                    "accent" -> editingAccent = newHex
+                    "bg" -> editingBg = newHex
+                    "card" -> editingCard = newHex
+                    "font" -> editingFontColor = newHex
+                }
+                pickerTarget = null
+            }
+        )
+    }
+
+    // ---------- SAVE PRESET DIALOG ----------
     if (showSaveDialog) {
         AlertDialog(
             onDismissRequest = { showSaveDialog = false },
-            title = { Text("Save Theme Preset", fontFamily = resolveFontFamily(editingFont)) },
+            title = { Text("Save Theme Preset", fontFamily = activeFont) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Give this theme a name:", fontSize = 12.sp, color = Color.Gray, fontFamily = resolveFontFamily(editingFont))
+                    Text("Give this theme a name:", fontSize = 12.sp, color = Color.Gray, fontFamily = activeFont)
                     OutlinedTextField(
                         value = presetNameInput,
                         onValueChange = { presetNameInput = it },
-                        placeholder = { Text("e.g. My Night Theme", fontFamily = resolveFontFamily(editingFont)) },
+                        placeholder = { Text("e.g. My Night Theme", fontFamily = activeFont) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
                     Text(
-                        "Will save: accent, background, cards, and font.",
+                        "Saves: accent, background, cards, font, font color.",
                         fontSize = 10.sp,
                         color = Color.DarkGray,
-                        fontFamily = resolveFontFamily(editingFont)
+                        fontFamily = activeFont
                     )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        // Apply whatever is being edited, then snapshot as preset
                         applyAll()
                         viewModel.saveCurrentAsPreset(presetNameInput)
                         showSaveDialog = false
                     },
                     enabled = presetNameInput.trim().isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = parseHexColor(editingAccent), contentColor = Color(0xFF090D16))
+                    colors = ButtonDefaults.buttonColors(containerColor = previewAccent, contentColor = Color(0xFF090D16))
                 ) {
-                    Text("Save Preset", fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(editingFont))
+                    Text("Save", fontWeight = FontWeight.Bold, fontFamily = activeFont)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showSaveDialog = false }) {
-                    Text("Cancel", color = Color.Gray, fontFamily = resolveFontFamily(editingFont))
+                    Text("Cancel", color = Color.Gray, fontFamily = activeFont)
                 }
             }
         )
     }
 }
 
-// ---------- HELPER COMPOSABLES ----------
+// ---------- Compact helpers ----------
 
 @Composable
-private fun ColorRow(
+private fun ModernColorRow(
     label: String,
-    value: String,
-    onChange: (String) -> Unit,
-    fontStyle: String
+    hex: String,
+    fontStyle: String,
+    isAuto: Boolean = false,
+    onTap: () -> Unit,
+    onAutoReset: (() -> Unit)? = null
 ) {
-    var hexInput by remember(value) { mutableStateOf(value) }
-    val parsed = parseHexColor(hexInput)
+    val isAutoMode = isAuto || hex.equals("auto", ignoreCase = true)
+    val preview = if (isAutoMode) Color(0x66FFFFFF) else parseHexColor(hex)
 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onTap() }
     ) {
         Row(
             modifier = Modifier.padding(12.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Preview swatch
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(parsed)
-                    .border(1.dp, Color(0x55FFFFFF), RoundedCornerShape(12.dp))
-            )
+                    .background(preview)
+                    .border(1.dp, Color(0x44FFFFFF), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isAutoMode) {
+                    Text("A", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF0F172A), fontFamily = resolveFontFamily(fontStyle))
+                }
+            }
             Column(modifier = Modifier.weight(1f)) {
                 Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(fontStyle), color = MaterialTheme.colorScheme.onSurface)
-                Spacer(modifier = Modifier.height(2.dp))
-                OutlinedTextField(
-                    value = hexInput,
-                    onValueChange = { new ->
-                        hexInput = new
-                        if (new.matches(Regex("^#[0-9A-Fa-f]{6}$"))) onChange(new)
-                    },
-                    textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = parsed,
-                        unfocusedBorderColor = Color(0x33FFFFFF)
-                    )
+                Text(
+                    if (isAutoMode) "Auto (theme-based)" else hex.uppercase(),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color.Gray
                 )
             }
+            if (isAutoMode && onAutoReset == null) {
+                // nothing
+            } else if (onAutoReset != null) {
+                if (isAutoMode) {
+                    Text("AUTO", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                } else {
+                    TextButton(onClick = onAutoReset, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                        Text("Auto", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                    }
+                }
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = Color.Gray,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
 
 @Composable
-private fun QuickPreset(
+private fun CompactPresetChip(
     name: String,
     accent: String,
     bg: String,
@@ -2429,6 +2572,7 @@ private fun QuickPreset(
     currentAccent: String,
     currentBg: String,
     currentCard: String,
+    fontFamily: FontFamily,
     onClick: () -> Unit
 ) {
     val isActive = currentAccent == accent && currentBg == bg && currentCard == card
@@ -2439,21 +2583,21 @@ private fun QuickPreset(
             .background(if (isActive) parseHexColor(accent).copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface)
             .border(1.dp, if (isActive) parseHexColor(accent) else Color(0x22FFFFFF), RoundedCornerShape(14.dp))
             .clickable { onClick() }
-            .padding(8.dp)
+            .padding(10.dp)
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            Box(modifier = Modifier.size(16.dp).clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp)).background(parseHexColor(accent)))
-            Box(modifier = Modifier.size(16.dp).clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)).background(parseHexColor(bg)))
+            Box(modifier = Modifier.size(18.dp, 12.dp).clip(RoundedCornerShape(topStart = 6.dp, bottomStart = 6.dp)).background(parseHexColor(accent)))
+            Box(modifier = Modifier.size(18.dp, 12.dp).clip(RoundedCornerShape(topEnd = 6.dp, bottomEnd = 6.dp)).background(parseHexColor(bg)))
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Box(modifier = Modifier.size(32.dp, 8.dp).clip(RoundedCornerShape(4.dp)).background(parseHexColor(card)))
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(name, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(modifier = Modifier.height(3.dp))
+        Box(modifier = Modifier.size(38.dp, 10.dp).clip(RoundedCornerShape(4.dp)).background(parseHexColor(card)))
+        Spacer(modifier = Modifier.height(5.dp))
+        Text(name, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontFamily = fontFamily)
     }
 }
 
 @Composable
-private fun SavedPresetRow(
+private fun CompactSavedPreset(
     preset: SavedThemePreset,
     isActive: Boolean,
     fontStyle: String,
@@ -2461,43 +2605,43 @@ private fun SavedPresetRow(
     onDelete: () -> Unit
 ) {
     Card(
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isActive) parseHexColor(preset.accentHex).copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .border(if (isActive) 1.5.dp else 1.dp, if (isActive) parseHexColor(preset.accentHex) else Color(0x15FFFFFF), RoundedCornerShape(16.dp))
+            .border(if (isActive) 1.5.dp else 1.dp, if (isActive) parseHexColor(preset.accentHex) else Color(0x15FFFFFF), RoundedCornerShape(14.dp))
             .clickable { onApply() }
     ) {
         Row(
-            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+            modifier = Modifier.padding(10.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                Box(modifier = Modifier.size(20.dp).clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)).background(parseHexColor(preset.accentHex)))
-                Box(modifier = Modifier.size(20.dp).clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)).background(parseHexColor(preset.backgroundHex)))
+                Box(modifier = Modifier.size(18.dp).clip(RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)).background(parseHexColor(preset.accentHex)))
+                Box(modifier = Modifier.size(18.dp).clip(RoundedCornerShape(topEnd = 8.dp, bottomEnd = 8.dp)).background(parseHexColor(preset.backgroundHex)))
             }
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(preset.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(preset.fontStyle), color = MaterialTheme.colorScheme.onSurface)
+                    Text(preset.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = resolveFontFamily(preset.fontStyle), color = MaterialTheme.colorScheme.onSurface)
                     if (isActive) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(parseHexColor(preset.accentHex))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .padding(horizontal = 5.dp, vertical = 1.dp)
                         ) {
-                            Text("ACTIVE", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFF090D16))
+                            Text("ACTIVE", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Color(0xFF090D16))
                         }
                     }
                 }
-                Text("Font: ${preset.fontStyle}", fontSize = 10.sp, color = Color.Gray, fontFamily = resolveFontFamily(preset.fontStyle))
+                Text("${preset.fontStyle} · ${if (preset.fontColorHex == "auto") "auto text" else preset.fontColorHex}", fontSize = 10.sp, color = Color.Gray, fontFamily = resolveFontFamily(preset.fontStyle))
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete preset", tint = Color(0x88EF4444), modifier = Modifier.size(18.dp))
+            IconButton(onClick = onDelete, modifier = Modifier.size(28.dp)) {
+                Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0x88EF4444), modifier = Modifier.size(16.dp))
             }
         }
     }
