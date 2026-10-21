@@ -1067,73 +1067,34 @@ fun TrueDetachedFloatingMiniPlayer(
             .padding(horizontal = 14.dp, vertical = 6.dp),
         contentAlignment = Alignment.CenterStart
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Station Logo
+        Row(modifier = Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier
-                    .size(46.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black),
+                modifier = Modifier.size(46.dp).clip(CircleShape).background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
                 if (!station.logoUrl.isNullOrEmpty()) {
-                    AsyncImage(
-                        model = station.logoUrl,
-                        contentDescription = station.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    AsyncImage(model = station.logoUrl, contentDescription = station.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 } else {
-                    Icon(
-                        Icons.Default.Radio,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(22.dp))
                 }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Station Name & Group
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    station.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    station.group,
-                    fontSize = 11.sp,
-                    color = Color.LightGray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Text(station.name, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(station.group, fontSize = 11.sp, color = Color.LightGray, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Play / Pause Squircle Button
+            // Play/Pause — FULL CIRCLE
             Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(accentColor)
-                    .clickable { onPlayPause() },
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(accentColor).clickable { onPlayPause() },
                 contentAlignment = Alignment.Center
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        color = Color(0xFF090D16),
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    CircularProgressIndicator(color = Color(0xFF090D16), strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                 } else {
                     Icon(
                         if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -1155,8 +1116,8 @@ fun ExpandedMasterDeckDialog(
     onToggleFavorite: () -> Unit, onOpenSleep: () -> Unit, onOpenEqualizer: () -> Unit, onOpenAlarm: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val deckAccent = parseHexColor(uiState.deckAccentHex)
     val deckBg = parseHexColor(uiState.deckBackgroundHex)
+    val deckAccent = parseHexColor(uiState.deckAccentHex)
     val pillBg = Color(0xFF1C2230)
     val pillBorder = Color(0x15FFFFFF)
 
@@ -1164,19 +1125,23 @@ fun ExpandedMasterDeckDialog(
         Surface(color = deckBg, modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // Ambient Glow
-                Box(modifier = Modifier.size(400.dp).align(Alignment.TopCenter).offset(y = -50.dp)
-                    .background(Brush.radialGradient(colors = listOf(deckAccent.copy(alpha = 0.25f), Color.Transparent))))
+                Box(
+                    modifier = Modifier.size(400.dp).align(Alignment.TopCenter).offset(y = -50.dp)
+                        .background(Brush.radialGradient(colors = listOf(deckAccent.copy(alpha = 0.25f), Color.Transparent)))
+                )
 
                 Column(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // --- TOP BAR (PixelPlayer Pill Style) ---
+                    // ---------- TOP BAR ----------
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp), 
-                        horizontalArrangement = Arrangement.SpaceBetween, 
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Close pill
                         Box(
                             modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
                                 .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
@@ -1189,6 +1154,7 @@ fun ExpandedMasterDeckDialog(
                         Text("Now Playing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
 
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            // EQ pill
                             Box(
                                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
                                     .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
@@ -1197,6 +1163,7 @@ fun ExpandedMasterDeckDialog(
                             ) {
                                 Icon(Icons.Default.Tune, contentDescription = "EQ", tint = Color.LightGray, modifier = Modifier.size(22.dp))
                             }
+                            // Settings pill
                             Box(
                                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
                                     .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
@@ -1208,11 +1175,12 @@ fun ExpandedMasterDeckDialog(
                         }
                     }
 
-                    // --- ALBUM ART (190dp Restored) ---
+                    // ---------- ALBUM ART WITH ON AIR BADGE ----------
                     Box(
                         modifier = Modifier.size(190.dp)
                             .clip(RoundedCornerShape(28.dp)).background(Color.Black)
-                            .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(28.dp)).shadow(24.dp, RoundedCornerShape(28.dp)),
+                            .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(28.dp))
+                            .shadow(24.dp, RoundedCornerShape(28.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!station.logoUrl.isNullOrEmpty()) {
@@ -1220,53 +1188,94 @@ fun ExpandedMasterDeckDialog(
                         } else {
                             Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
                         }
+
+                        // ON AIR BADGE — correctly INSIDE the album art Box
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(10.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.Black.copy(alpha = 0.8f))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier.size(6.dp).clip(CircleShape)
+                                        .background(if (isPlaying) Color(0xFF10B981) else Color.Gray)
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Text(
+                                    if (isPlaying) "ON AIR" else "PAUSED",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
                     }
 
-                    // --- INFO (Title & Subtitle Restored) ---
+                    // ---------- INFO ----------
                     Box(modifier = Modifier.fillMaxWidth().height(76.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFF162138)).padding(horizontal = 10.dp, vertical = 3.dp)) {
                                 Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, textAlign = TextAlign.Center)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(station.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                            Text(
+                                station.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
+                                color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                            )
                             Text(
                                 if (!station.description.isNullOrEmpty()) station.description!!
                                 else listOfNotNull(station.codec, station.bitrate, station.country).joinToString(" • "),
-                                fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                                fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                             )
                         }
                     }
 
-                    // --- SPECTRUM (Restored) ---
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        Column {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = deckAccent, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Audio Spectrum", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                                Text("${uiState.spectrumStyle.uppercase()}", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color.Gray)
+                    // ---------- SPECTRUM CARD (rounded card, floating labels) ----------
+                    Card(
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF070B14)),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
+                    ) {
+                        Box(modifier = Modifier.fillMaxWidth().height(uiState.spectrumHeight.dp)) {
+                            // Bars fill the entire card
+                            CustomizableAudioSpectrumCanvas(
+                                isPlaying = isPlaying,
+                                accentColor = deckAccent,
+                                style = uiState.spectrumStyle,
+                                sensitivity = uiState.spectrumSensitivity,
+                                colorScheme = uiState.spectrumColorScheme,
+                                speed = uiState.spectrumSpeed,
+                                barHeightScale = uiState.spectrumBarHeightScale,
+                                fftBars = uiState.fftBars,
+                                useRealFft = uiState.useRealFft
+                            )
+
+                            // Floating label top-left (doesn't take vertical space)
+                            Row(
+                                modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Bolt, contentDescription = null, tint = deckAccent, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Audio Spectrum", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Box(modifier = Modifier.fillMaxWidth().height(uiState.spectrumHeight.dp)) {
-                                CustomizableAudioSpectrumCanvas(
-                                    isPlaying = isPlaying,
-                                    accentColor = deckAccent,
-                                    style = uiState.spectrumStyle,
-                                    sensitivity = uiState.spectrumSensitivity,
-                                    colorScheme = uiState.spectrumColorScheme,
-                                    speed = uiState.spectrumSpeed,
-                                    barHeightScale = uiState.spectrumBarHeightScale,
-                                    fftBars = uiState.fftBars,
-                                    useRealFft = uiState.useRealFft
-                                )
-                            }
+
+                            // Floating style + percent top-right
+                            Text(
+                                "${uiState.spectrumStyle.uppercase()} • ${(uiState.spectrumSensitivity * 100).toInt()}%",
+                                fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = Color.Gray,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
+                            )
                         }
                     }
 
-                    // --- CONTROLS ---
+                    // ---------- PLAYBACK CONTROLS ----------
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                         IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
                             Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(36.dp))
@@ -1279,7 +1288,7 @@ fun ExpandedMasterDeckDialog(
                                 CircularProgressIndicator(color = deckBg, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
                             } else {
                                 Icon(
-                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, 
+                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                                     contentDescription = null, tint = deckBg, modifier = Modifier.size(44.dp)
                                 )
                             }
@@ -1289,36 +1298,37 @@ fun ExpandedMasterDeckDialog(
                         }
                     }
 
-                    // --- BOTTOM SEGMENTED PILL ---
+                    // ---------- BOTTOM PILL (32.dp full capsule) ----------
                     Row(
                         modifier = Modifier.fillMaxWidth().height(64.dp)
-                            .clip(RoundedCornerShape(20.dp)).background(pillBg)
-                            .border(1.dp, pillBorder, RoundedCornerShape(20.dp))
-                            .padding(4.dp), // The gap padding
-                        horizontalArrangement = Arrangement.spacedBy(4.dp) 
+                            .clip(RoundedCornerShape(32.dp)).background(pillBg)
+                            .border(1.dp, pillBorder, RoundedCornerShape(32.dp))
+                            .padding(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
-                                .background(deckBg.copy(alpha = 0.3f)).clickable { onOpenSleep() },
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.5f)).clickable { onOpenSleep() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(24.dp))
                         }
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
-                                .background(deckBg.copy(alpha = 0.3f)).clickable { onOpenAlarm() },
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.5f)).clickable { onOpenAlarm() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = Color.LightGray, modifier = Modifier.size(24.dp))
                         }
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
-                                .background(deckBg.copy(alpha = 0.3f)).clickable { onToggleFavorite() },
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.5f)).clickable { onToggleFavorite() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                if (station.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
-                                contentDescription = "Favorite", tint = if (station.isFavorite) Color(0xFFEC4899) else Color.LightGray, 
+                                if (station.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (station.isFavorite) Color(0xFFEC4899) else Color.LightGray,
                                 modifier = Modifier.size(24.dp)
                             )
                         }
@@ -1329,7 +1339,6 @@ fun ExpandedMasterDeckDialog(
         }
     }
 }
-
 // Customizable Dynamic Audio Spectrum Canvas
 @Composable
 fun CustomizableAudioSpectrumCanvas(
