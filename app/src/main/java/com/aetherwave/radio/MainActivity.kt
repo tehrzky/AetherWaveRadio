@@ -88,7 +88,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Handle alarm trigger launch if app was launched via AlarmReceiver
         if (intent?.action == "com.aetherwave.radio.ACTION_ALARM_FIRE") {
             val stationId = intent.getStringExtra("station_id")
             val station = viewModel.stations.value.firstOrNull { it.id == stationId }
@@ -101,6 +100,12 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val uiState by viewModel.uiState.collectAsState()
+            
+            // Hoisted dialog states so they don't reset when screens change
+            var showSleepDialog by remember { mutableStateOf(false) }
+            var showEqDialog by remember { mutableStateOf(false) }
+            var showAlarmDialog by remember { mutableStateOf(false) }
+
             AetherWaveRadioTheme(
                 accentColorHex = uiState.themeColorHex,
                 backgroundColorHex = uiState.backgroundColorHex,
@@ -110,20 +115,11 @@ class MainActivity : ComponentActivity() {
                 themeMode = uiState.themeMode,
                 isMonet = uiState.isMonetEnabled
             ) {
-                // System Back gesture support
-                // If in settings: close settings (returns directly to deck if deck was open!)
-                BackHandler(enabled = uiState.isSettingsPageOpen) {
-                    viewModel.closeSettingsPage()
-                }
-                // If in big player deck and settings is closed: close deck
-                BackHandler(enabled = uiState.isDeckOpen && !uiState.isSettingsPageOpen) {
-                    viewModel.closeDeck()
-                }
-                // If in arrange mode on home: exit arrange mode
-                BackHandler(enabled = uiState.isArrangeMode && !uiState.isDeckOpen && !uiState.isSettingsPageOpen) {
-                    viewModel.toggleArrangeMode()
-                }
+                BackHandler(enabled = uiState.isSettingsPageOpen) { viewModel.closeSettingsPage() }
+                BackHandler(enabled = uiState.isDeckOpen && !uiState.isSettingsPageOpen) { viewModel.closeDeck() }
+                BackHandler(enabled = uiState.isArrangeMode && !uiState.isDeckOpen && !uiState.isSettingsPageOpen) { viewModel.toggleArrangeMode() }
 
+                // 1. Base Layer (Home or Settings)
                 if (uiState.isSettingsPageOpen) {
                     SettingsListedScreen(
                         viewModel = viewModel,
@@ -131,7 +127,42 @@ class MainActivity : ComponentActivity() {
                         onBack = { viewModel.closeSettingsPage() }
                     )
                 } else {
-                    RadioAppScreen(viewModel = viewModel)
+                    RadioAppScreen(
+                        viewModel = viewModel,
+                        onOpenSleep = { showSleepDialog = true },
+                        onOpenEq = { showEqDialog = true },
+                        onOpenAlarm = { showAlarmDialog = true }
+                    )
+                }
+
+                // 2. Big Player Dialog (Hoisted to root so it never flashes)
+                if (uiState.isDeckOpen && uiState.currentStation != null) {
+                    ExpandedMasterDeckDialog(
+                        station = uiState.currentStation!!,
+                        isPlaying = uiState.isPlaying,
+                        isLoading = uiState.isLoading,
+                        accentColor = parseHexColor(uiState.themeColorHex),
+                        viewModel = viewModel,
+                        onClose = { viewModel.closeDeck() },
+                        onPlayPause = { if (uiState.isPlaying) viewModel.pausePlayback() else viewModel.resumePlayback() },
+                        onNext = { viewModel.playNext() },
+                        onPrevious = { viewModel.playPrevious() },
+                        onToggleFavorite = { viewModel.toggleFavorite(uiState.currentStation!!.id) },
+                        onOpenSleep = { showSleepDialog = true },
+                        onOpenEqualizer = { showEqDialog = true },
+                        onOpenAlarm = { showAlarmDialog = true }
+                    )
+                }
+
+                // 3. Sub-Dialogs
+                if (showSleepDialog) {
+                    SleepTimerDialog(viewModel = viewModel, accentColor = parseHexColor(uiState.themeColorHex), onClose = { showSleepDialog = false })
+                }
+                if (showEqDialog) {
+                    EqualizerDialog(viewModel = viewModel, accentColor = parseHexColor(uiState.themeColorHex), onClose = { showEqDialog = false })
+                }
+                if (showAlarmDialog) {
+                    WakeUpAlarmDialog(viewModel = viewModel, accentColor = parseHexColor(uiState.themeColorHex), onClose = { showAlarmDialog = false })
                 }
             }
         }
@@ -145,7 +176,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RadioAppScreen(viewModel: RadioViewModel) {
+fun RadioAppScreen(
+    viewModel: RadioViewModel,
+    onOpenSleep: () -> Unit,
+    onOpenEq: () -> Unit,
+    onOpenAlarm: () -> Unit
+) {
     val uiState by viewModel.uiState.collectAsState()
     val stations by viewModel.filteredAndSortedStations.collectAsState()
     val allFilterGroups by viewModel.allFilterGroups.collectAsState()
@@ -154,11 +190,6 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
     var showEditDialog by remember { mutableStateOf(false) }
     var stationBeingEdited by remember { mutableStateOf<Station?>(null) }
     var showSortMenu by remember { mutableStateOf(false) }
-
-    // Dialog state
-    var showSleepDialog by remember { mutableStateOf(false) }
-    var showEqDialog by remember { mutableStateOf(false) }
-    var showAlarmDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -701,33 +732,6 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
             }
         )
     }
-
-    // Sleep Timer Dialog
-    if (showSleepDialog) {
-        SleepTimerDialog(
-            viewModel = viewModel,
-            accentColor = accentColor,
-            onClose = { showSleepDialog = false }
-        )
-    }
-
-    // Equalizer & Audio Effects Dialog (Fixed, no nested scroll crash!)
-    if (showEqDialog) {
-        EqualizerDialog(
-            viewModel = viewModel,
-            accentColor = accentColor,
-            onClose = { showEqDialog = false }
-        )
-    }
-
-    // Wake-up Alarm Clock Dialog (Fixed, no nested scroll crash!)
-    if (showAlarmDialog) {
-        WakeUpAlarmDialog(
-            viewModel = viewModel,
-            accentColor = accentColor,
-            onClose = { showAlarmDialog = false }
-        )
-    }
 }
 
 // Clean Grid Card: Hold to Edit, no ugly buttons
@@ -821,18 +825,18 @@ fun StationGridCardV1(
             ) {
                 Box(
                     modifier = Modifier
+                        .height(22.dp) // Force fixed height
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0x12FFFFFF))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    contentAlignment = Alignment.Center // Centers the text
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center // Force vertical & horizontal center
                 ) {
                     Text(
                         station.group,
                         fontSize = 10.sp,
                         color = Color.Gray,
-                        textAlign = TextAlign.Center, // Centers the text
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
                     )
                 }
 
@@ -954,16 +958,34 @@ fun StationListCardRightPlay(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
+                            .height(20.dp) // Force fixed height
                             .clip(RoundedCornerShape(4.dp))
                             .background(Color(0x12FFFFFF))
-                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                            .padding(horizontal = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(station.group, fontSize = 10.sp, color = Color.Gray, textAlign = TextAlign.Center, maxLines = 1)
                     }
+                    
                     Spacer(modifier = Modifier.width(6.dp))
-                    val country = station.country?.take(3)?.uppercase() ?: "🌐"
-                    Text(country, fontSize = 10.sp, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+                    
+                    // ADD THE SMART PARSER HERE
+                    val countryCode = remember(station.country) {
+                        val c = station.country?.trim()?.lowercase() ?: ""
+                        when {
+                            c.contains("philippines") || c.contains("pilipinas") || c == "ph" -> "PH"
+                            c.contains("united states") || c.contains("usa") || c == "us" -> "US"
+                            c.contains("japan") || c == "jp" -> "JP"
+                            c.contains("switzerland") || c == "ch" -> "CH"
+                            c.contains("united kingdom") || c.contains("uk") || c == "gb" -> "UK"
+                            c.contains("spain") || c == "es" -> "ES"
+                            c.contains("thailand") || c == "th" -> "TH"
+                            c.contains("global") || c.contains("international") || c.isBlank() -> "🌐"
+                            c.length == 2 -> c.uppercase()
+                            else -> c.take(3).uppercase()
+                        }
+                    }
+                    Text(countryCode, fontSize = 10.sp, color = Color.LightGray, fontFamily = FontFamily.Monospace)
                 }
             }
 
@@ -1135,11 +1157,13 @@ fun ExpandedMasterDeckDialog(
     val uiState by viewModel.uiState.collectAsState()
     val deckAccent = parseHexColor(uiState.deckAccentHex)
     val deckBg = parseHexColor(uiState.deckBackgroundHex)
+    val pillBg = Color(0xFF1C2230)
+    val pillBorder = Color(0x15FFFFFF)
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = deckBg, modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxSize()) {
-                // Ambient Radial Glow
+                // Ambient Glow
                 Box(modifier = Modifier.size(400.dp).align(Alignment.TopCenter).offset(y = -50.dp)
                     .background(Brush.radialGradient(colors = listOf(deckAccent.copy(alpha = 0.25f), Color.Transparent))))
 
@@ -1153,42 +1177,40 @@ fun ExpandedMasterDeckDialog(
                         horizontalArrangement = Arrangement.SpaceBetween, 
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Left: Close Button Pill
                         Box(
-                            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF1C2230)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(12.dp))
+                            modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
+                                .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
                                 .clickable { onClose() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
                         }
 
-                        Text("Now Playing", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text("Now Playing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
 
-                        // Right: Action Pills (Equalizer, Bluetooth, Settings)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             Box(
-                                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF1C2230)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(12.dp))
+                                modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
+                                    .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
                                     .clickable { onOpenEqualizer() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Tune, contentDescription = "EQ", tint = Color.LightGray, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Tune, contentDescription = "EQ", tint = Color.LightGray, modifier = Modifier.size(22.dp))
                             }
                             Box(
-                                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(Color(0xFF1C2230)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(12.dp))
+                                modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
+                                    .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
                                     .clickable { viewModel.openSettingsPage(null, fromDeck = true) },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.LightGray, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.LightGray, modifier = Modifier.size(22.dp))
                             }
                         }
                     }
 
-                    // --- ARTWORK ---
+                    // --- ALBUM ART (190dp Restored) ---
                     Box(
-                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                        modifier = Modifier.size(190.dp)
                             .clip(RoundedCornerShape(28.dp)).background(Color.Black)
                             .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(28.dp)).shadow(24.dp, RoundedCornerShape(28.dp)),
                         contentAlignment = Alignment.Center
@@ -1196,29 +1218,55 @@ fun ExpandedMasterDeckDialog(
                         if (!station.logoUrl.isNullOrEmpty()) {
                             AsyncImage(model = station.logoUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         } else {
-                            Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(80.dp))
+                            Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
                         }
                     }
 
-                    // --- INFO & PROGRESS ---
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(station.name, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(station.group, fontSize = 14.sp, color = Color.Gray, maxLines = 1)
-                        
-                        Spacer(modifier = Modifier.height(24.dp))
-                        
-                        // Fake Progress Bar (since live radio doesn't have a duration)
-                        Row(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color(0xFF2A3143))) {
-                            Box(modifier = Modifier.fillMaxWidth(0.35f).fillMaxHeight().background(deckAccent))
-                        }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("LIVE", fontSize = 11.sp, color = deckAccent, fontWeight = FontWeight.Bold)
-                            Text("∞", fontSize = 11.sp, color = Color.Gray)
+                    // --- INFO (Title & Subtitle Restored) ---
+                    Box(modifier = Modifier.fillMaxWidth().height(76.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFF162138)).padding(horizontal = 10.dp, vertical = 3.dp)) {
+                                Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, textAlign = TextAlign.Center)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(station.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                            Text(
+                                if (!station.description.isNullOrEmpty()) station.description!!
+                                else listOfNotNull(station.codec, station.bitrate, station.country).joinToString(" • "),
+                                fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
 
-                    // --- PLAYBACK CONTROLS (PixelPlayer Centered Row) ---
+                    // --- SPECTRUM (Restored) ---
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Column {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = deckAccent, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Audio Spectrum", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                Text("${uiState.spectrumStyle.uppercase()}", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color.Gray)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Box(modifier = Modifier.fillMaxWidth().height(uiState.spectrumHeight.dp)) {
+                                CustomizableAudioSpectrumCanvas(
+                                    isPlaying = isPlaying,
+                                    accentColor = deckAccent,
+                                    style = uiState.spectrumStyle,
+                                    sensitivity = uiState.spectrumSensitivity,
+                                    colorScheme = uiState.spectrumColorScheme,
+                                    speed = uiState.spectrumSpeed,
+                                    barHeightScale = uiState.spectrumBarHeightScale,
+                                    fftBars = uiState.fftBars,
+                                    useRealFft = uiState.useRealFft
+                                )
+                            }
+                        }
+                    }
+
+                    // --- CONTROLS ---
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                         IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
                             Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(36.dp))
@@ -1241,28 +1289,33 @@ fun ExpandedMasterDeckDialog(
                         }
                     }
 
-                    // --- BOTTOM SEGMENTED PILL (PixelPlayer Style) ---
+                    // --- BOTTOM SEGMENTED PILL ---
                     Row(
                         modifier = Modifier.fillMaxWidth().height(64.dp)
-                            .clip(RoundedCornerShape(20.dp)).background(Color(0xFF1C2230))
-                            .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(20.dp)).background(pillBg)
+                            .border(1.dp, pillBorder, RoundedCornerShape(20.dp))
+                            .padding(4.dp), // The gap padding
+                        horizontalArrangement = Arrangement.spacedBy(4.dp) 
                     ) {
-                        // Sleep Timer (Customizable)
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onOpenSleep() }, contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
+                                .background(deckBg.copy(alpha = 0.3f)).clickable { onOpenSleep() },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(24.dp))
                         }
-                        // Thin Divider
-                        Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color(0x15FFFFFF)))
-                        
-                        // Alarm
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onOpenAlarm() }, contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
+                                .background(deckBg.copy(alpha = 0.3f)).clickable { onOpenAlarm() },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = Color.LightGray, modifier = Modifier.size(24.dp))
                         }
-                        // Thin Divider
-                        Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color(0x15FFFFFF)))
-                        
-                        // Favorite
-                        Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onToggleFavorite() }, contentAlignment = Alignment.Center) {
+                        Box(
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(16.dp))
+                                .background(deckBg.copy(alpha = 0.3f)).clickable { onToggleFavorite() },
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 if (station.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
                                 contentDescription = "Favorite", tint = if (station.isFavorite) Color(0xFFEC4899) else Color.LightGray, 
