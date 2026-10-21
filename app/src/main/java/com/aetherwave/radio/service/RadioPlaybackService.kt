@@ -5,7 +5,9 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.Virtualizer
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -30,6 +32,8 @@ class RadioPlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var mediaSession: MediaSession? = null
     private var androidEqualizer: Equalizer? = null
+    private var androidBassBoost: BassBoost? = null
+    private var androidVirtualizer: Virtualizer? = null
 
     companion object {
         const val CHANNEL_ID = "aetherwave_radio_channel"
@@ -43,16 +47,12 @@ class RadioPlaybackService : MediaSessionService() {
                 .setTitle(station.name)
                 .setArtist(station.group)
                 .setAlbumTitle("AetherWave Studio Radio")
-                .apply {
-                    if (!station.logoUrl.isNullOrEmpty()) {
-                        setDisplayTitle(station.name)
-                    }
-                }
+                .setDisplayTitle(station.name)
                 .build()
 
             return MediaItem.Builder()
-                .setUri(cleanUrl)
                 .setMediaId(station.id)
+                .setUri(cleanUrl)
                 .setMediaMetadata(metadata)
                 .build()
         }
@@ -62,34 +62,34 @@ class RadioPlaybackService : MediaSessionService() {
         super.onCreate()
         createNotificationChannels()
 
+        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(15000)
+            .setReadTimeoutMs(20000)
+            .setUserAgent("AetherWaveRadio/1.0 (Linux; Android)")
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(this)
+            .setDataSourceFactory(httpDataSourceFactory)
+
         val audioAttributes = AudioAttributes.Builder()
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .setUsage(C.USAGE_MEDIA)
             .build()
 
-        val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-            .setUserAgent("AetherWaveRadio/1.0 (Android; Linux; ExoPlayer)")
-            .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(15000)
-            .setReadTimeoutMs(15000)
-
-        val mediaSourceFactory = DefaultMediaSourceFactory(this)
-            .setDataSourceFactory(httpDataSourceFactory)
-
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(mediaSourceFactory)
-            .setAudioAttributes(audioAttributes, true) // Handles Audio Focus automatically!
-            .setHandleAudioBecomingNoisy(true) // Pauses when Bluetooth headphones disconnect!
-            .setWakeMode(C.WAKE_MODE_NETWORK) // Keeps CPU/Wi-Fi active while screen is off
-            .build()
-            .apply {
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
+            .setWakeMode(C.WAKE_MODE_NETWORK)
+            .build().apply {
+                repeatMode = Player.REPEAT_MODE_OFF
                 addListener(object : Player.Listener {
                     override fun onPlayerError(error: PlaybackException) {
                         Log.e("RadioPlaybackService", "ExoPlayer error [${error.errorCodeName}]: ${error.message}", error)
                     }
 
                     override fun onAudioSessionIdChanged(audioSessionId: Int) {
-                        initEqualizer(audioSessionId)
+                        initAudioEffects(audioSessionId)
                     }
                 })
             }
@@ -98,20 +98,104 @@ class RadioPlaybackService : MediaSessionService() {
             .build()
     }
 
-    private fun initEqualizer(audioSessionId: Int) {
+    private fun initAudioEffects(audioSessionId: Int) {
         if (audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId == 0) return
         try {
             androidEqualizer?.release()
             androidEqualizer = Equalizer(0, audioSessionId).apply {
                 enabled = true
             }
-            Log.d("RadioPlaybackService", "Android Equalizer initialized for session $audioSessionId")
+
+            androidBassBoost?.release()
+            androidBassBoost = BassBoost(0, audioSessionId).apply {
+                enabled = true
+            }
+
+            androidVirtualizer?.release()
+            androidVirtualizer = Virtualizer(0, audioSessionId).apply {
+                enabled = true
+            }
+
+            // Load saved settings from preferences and apply
+            val prefs = getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
+            val json = prefs.getString("eq_bands_json", null)
+            val bands: FloatArray = if (!json.isNullOrEmpty()) {
+                try {
+                    Gson().fromJson(json, FloatArray::class.java)
+                } catch (_: Exception) {
+                    floatArrayOf(0f, 0f, 0f, 0f, 0f)
+                }
+            } else {
+                floatArrayOf(0f, 0f, 0f, 0f, 0f)
+            }
+            applyEqBands(bands)
+            applyBassBoost(prefs.getFloat("bass_boost", 0f))
+            applyVirtualizer(prefs.getFloat("virtualizer", 0f))
+            Log.d("RadioPlaybackService", "Android Equalizer & AudioFX initialized for session $audioSessionId")
         } catch (e: Exception) {
             Log.e("RadioPlaybackService", "Equalizer init error: ${e.message}")
         }
     }
 
+    private fun applyEqBands(bands: FloatArray) {
+        val eq = androidEqualizer ?: return
+        try {
+            val numBands = eq.numberOfBands.toInt()
+            val minBandLevel = eq.bandLevelRange?.get(0) ?: -1200
+            val maxBandLevel = eq.bandLevelRange?.get(1) ?: 1200
+            for (i in 0 until minOf(bands.size, numBands)) {
+                // gain is in dB (-12 to 12). 1 dB = 100 mB
+                val millibels = (bands[i] * 100).toInt().coerceIn(minBandLevel.toInt(), maxBandLevel.toInt()).toShort()
+                eq.setBandLevel(i.toShort(), millibels)
+            }
+        } catch (e: Exception) {
+            Log.e("RadioPlaybackService", "Error applying EQ bands: ${e.message}")
+        }
+    }
+
+    private fun applyBassBoost(strength: Float) {
+        try {
+            androidBassBoost?.let { bb ->
+                if (bb.strengthSupported) {
+                    val s = (strength * 1000).toInt().coerceIn(0, 1000).toShort()
+                    bb.setStrength(s)
+                    bb.enabled = strength > 0.01f
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("RadioPlaybackService", "Error setting bass boost: ${e.message}")
+        }
+    }
+
+    private fun applyVirtualizer(strength: Float) {
+        try {
+            androidVirtualizer?.let { virt ->
+                if (virt.strengthSupported) {
+                    val s = (strength * 1000).toInt().coerceIn(0, 1000).toShort()
+                    virt.setStrength(s)
+                    virt.enabled = strength > 0.01f
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("RadioPlaybackService", "Error setting virtualizer: ${e.message}")
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_SET_EQ) {
+            val bands = intent.getFloatArrayExtra("eq_bands")
+            if (bands != null) {
+                applyEqBands(bands)
+            }
+            if (intent.hasExtra("bass_boost")) {
+                applyBassBoost(intent.getFloatExtra("bass_boost", 0f))
+            }
+            if (intent.hasExtra("virtualizer")) {
+                applyVirtualizer(intent.getFloatExtra("virtualizer", 0f))
+            }
+            return START_NOT_STICKY
+        }
+
         if (intent?.action == ACTION_PLAY_ALARM) {
             val stationId = intent.getStringExtra("station_id")
             val prefs = getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
@@ -204,6 +288,16 @@ class RadioPlaybackService : MediaSessionService() {
             androidEqualizer?.release()
         } catch (_: Exception) {}
         androidEqualizer = null
+
+        try {
+            androidBassBoost?.release()
+        } catch (_: Exception) {}
+        androidBassBoost = null
+
+        try {
+            androidVirtualizer?.release()
+        } catch (_: Exception) {}
+        androidVirtualizer = null
 
         mediaSession?.run {
             player.release()
