@@ -427,33 +427,21 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
 
                     // Sort Dropdown Button
                     Box {
-                        Row(
+                        Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(16.dp))
+                                .width(82.dp)   // ← FIXED WIDTH matching Arrange
+                                .height(32.dp)  // ← FIXED HEIGHT matching Arrange
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(MaterialTheme.colorScheme.surface)
-                                .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(16.dp))
-                                .clickable { showSortMenu = true }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
+                                .clickable { showSortMenu = true },
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                Icons.Default.Sort,
-                                contentDescription = null,
-                                tint = Color.Gray,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                when (uiState.sortOption) {
-                                    SortOption.CUSTOM -> "Custom"
-                                    SortOption.NAME_ASC -> "A - Z"
-                                    SortOption.NAME_DESC -> "Z - A"
-                                    SortOption.FAVORITES_FIRST -> "Favorites"
-                                    SortOption.RECENTLY_PLAYED -> "Recent"
-                                },
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                                Icon(Icons.Default.Sort, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Sort", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
                         }
 
                         DropdownMenu(
@@ -834,18 +822,19 @@ fun StationGridCardV1(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0x12FFFFFF))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center // Centers the text
                 ) {
                     Text(
                         station.group,
                         fontSize = 10.sp,
                         color = Color.Gray,
+                        textAlign = TextAlign.Center, // Centers the text
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                // IMPROVED COUNTRY PARSER
                 val countryCode = remember(station.country) {
                     val c = station.country?.trim()?.lowercase() ?: ""
                     when {
@@ -856,16 +845,8 @@ fun StationGridCardV1(
                         c.contains("united kingdom") || c.contains("uk") || c == "gb" -> "UK"
                         c.contains("spain") || c == "es" -> "ES"
                         c.contains("thailand") || c == "th" -> "TH"
-                        c.contains("germany") || c == "de" -> "DE"
-                        c.contains("france") || c == "fr" -> "FR"
-                        c.contains("australia") || c == "au" -> "AU"
-                        c.contains("canada") || c == "ca" -> "CA"
-                        c.contains("india") || c == "in" -> "IN"
-                        c.contains("brazil") || c == "br" -> "BR"
                         c.contains("global") || c.contains("international") || c.isBlank() -> "🌐"
-                        // If it's already a 2-letter code, just uppercase it
                         c.length == 2 -> c.uppercase()
-                        // Otherwise take first 3 letters
                         else -> c.take(3).uppercase()
                     }
                 }
@@ -875,15 +856,9 @@ fun StationGridCardV1(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
                             .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text(
-                            countryCode,
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.LightGray,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        Text(countryCode, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, fontFamily = FontFamily.Monospace)
                     }
                 }
             }
@@ -976,17 +951,18 @@ fun StationListCardRightPlay(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        station.group,
-                        fontSize = 11.sp,
-                        color = Color.Gray,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (!station.codec.isNullOrEmpty()) {
-                        Text(" • ", fontSize = 10.sp, color = Color.DarkGray)
-                        Text(station.codec, fontSize = 10.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0x12FFFFFF))
+                            .padding(horizontal = 6.dp, vertical = 1.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(station.group, fontSize = 10.sp, color = Color.Gray, textAlign = TextAlign.Center, maxLines = 1)
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
+                    val country = station.country?.take(3)?.uppercase() ?: "🌐"
+                    Text(country, fontSize = 10.sp, color = Color.LightGray, fontFamily = FontFamily.Monospace)
                 }
             }
 
@@ -1151,356 +1127,149 @@ fun TrueDetachedFloatingMiniPlayer(
 // Master Studio Deck Dialog (Big Player with fixed play & spectrum location, 3-part bottom pill, rounded squircle play button)
 @Composable
 fun ExpandedMasterDeckDialog(
-    station: Station,
-    isPlaying: Boolean,
-    isLoading: Boolean,
-    accentColor: Color,
-    viewModel: RadioViewModel,
-    onClose: () -> Unit,
-    onPlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onToggleFavorite: () -> Unit,
-    onOpenSleep: () -> Unit,
-    onOpenEqualizer: () -> Unit,
-    onOpenAlarm: () -> Unit
+    station: Station, isPlaying: Boolean, isLoading: Boolean, accentColor: Color, viewModel: RadioViewModel,
+    onClose: () -> Unit, onPlayPause: () -> Unit, onNext: () -> Unit, onPrevious: () -> Unit,
+    onToggleFavorite: () -> Unit, onOpenSleep: () -> Unit, onOpenEqualizer: () -> Unit, onOpenAlarm: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val deckAccent = parseHexColor(uiState.deckAccentHex)
     val deckBg = parseHexColor(uiState.deckBackgroundHex)
 
-    Dialog(
-        onDismissRequest = onClose,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Surface(
-            color = deckBg,
-            modifier = Modifier.fillMaxSize()
-        ) {
+    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+        Surface(color = deckBg, modifier = Modifier.fillMaxSize()) {
             Box(modifier = Modifier.fillMaxSize()) {
                 // Ambient Radial Glow
-                Box(
-                    modifier = Modifier
-                        .size(360.dp)
-                        .align(Alignment.TopCenter)
-                        .offset(y = 10.dp)
-                        .background(
-                            Brush.radialGradient(
-                                colors = listOf(deckAccent.copy(alpha = 0.28f), Color.Transparent)
-                            )
-                        )
-                )
+                Box(modifier = Modifier.size(400.dp).align(Alignment.TopCenter).offset(y = -50.dp)
+                    .background(Brush.radialGradient(colors = listOf(deckAccent.copy(alpha = 0.25f), Color.Transparent))))
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // TOP BAR: Clean & uncluttered (Brand + Equalizer + Settings + Close)
+                    // --- TOP BAR (PixelPlayer Pill Style) ---
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp), 
+                        horizontalArrangement = Arrangement.SpaceBetween, 
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Radio, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("AETHERWAVE STUDIO", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.Gray, letterSpacing = 1.sp)
+                        // Left: Close Button Pill
+                        Box(
+                            modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xFF1C2230)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(12.dp))
+                                .clickable { onClose() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = { viewModel.openSettingsPage(SettingsSubPage.EQUALIZER, fromDeck = true) }) {
-                                Icon(Icons.Default.Tune, contentDescription = "Equalizer", tint = accentColor, modifier = Modifier.size(20.dp))
+                        Text("Now Playing", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+
+                        // Right: Action Pills (Equalizer, Bluetooth, Settings)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(
+                                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF1C2230)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(12.dp))
+                                    .clickable { onOpenEqualizer() },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = "EQ", tint = Color.LightGray, modifier = Modifier.size(20.dp))
                             }
-                            IconButton(onClick = { viewModel.openSettingsPage(SettingsSubPage.BLUETOOTH, fromDeck = true) }) {
-                                Icon(Icons.Default.Bluetooth, contentDescription = "Bluetooth", tint = Color(0xFF60A5FA), modifier = Modifier.size(20.dp))
-                            }
-                            IconButton(onClick = { viewModel.openSettingsPage(null, fromDeck = true) }) {
+                            Box(
+                                modifier = Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(Color(0xFF1C2230)).border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(12.dp))
+                                    .clickable { viewModel.openSettingsPage(null, fromDeck = true) },
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.LightGray, modifier = Modifier.size(20.dp))
-                            }
-                            IconButton(onClick = onClose) {
-                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(26.dp))
                             }
                         }
                     }
 
-                    // HERO ARTWORK SQUIRCLE (190dp)
+                    // --- ARTWORK ---
                     Box(
-                        modifier = Modifier
-                            .size(190.dp)
-                            .clip(RoundedCornerShape(32.dp))
-                            .background(Color.Black)
-                            .border(1.5.dp, Color(0x30FFFFFF), RoundedCornerShape(32.dp))
-                            .shadow(20.dp, RoundedCornerShape(32.dp)),
+                        modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                            .clip(RoundedCornerShape(28.dp)).background(Color.Black)
+                            .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(28.dp)).shadow(24.dp, RoundedCornerShape(28.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!station.logoUrl.isNullOrEmpty()) {
-                            AsyncImage(
-                                model = station.logoUrl,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier.fillMaxSize()
-                            )
+                            AsyncImage(model = station.logoUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                         } else {
-                            Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                            Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(80.dp))
                         }
+                    }
 
-                        // Live On Air badge
+                    // --- INFO & PROGRESS ---
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(station.name, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(station.group, fontSize = 14.sp, color = Color.Gray, maxLines = 1)
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        // Fake Progress Bar (since live radio doesn't have a duration)
+                        Row(modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape).background(Color(0xFF2A3143))) {
+                            Box(modifier = Modifier.fillMaxWidth(0.35f).fillMaxHeight().background(deckAccent))
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("LIVE", fontSize = 11.sp, color = deckAccent, fontWeight = FontWeight.Bold)
+                            Text("∞", fontSize = 11.sp, color = Color.Gray)
+                        }
+                    }
+
+                    // --- PLAYBACK CONTROLS (PixelPlayer Centered Row) ---
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                        IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(36.dp))
+                        }
                         Box(
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .padding(10.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.Black.copy(alpha = 0.8f))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(if (isPlaying) Color(0xFF10B981) else Color.Gray)
-                                )
-                                Spacer(modifier = Modifier.width(5.dp))
-                                Text(
-                                    if (isPlaying) "ON AIR" else "PAUSED",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                    }
-
-                    // FIXED-HEIGHT STATION INFO CONTAINER (Guarantees spectrum and play button NEVER shift!)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(76.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            // Centered Group Pill
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
-                                    .background(Color(0xFF162138))
-                                    .padding(horizontal = 10.dp, vertical = 3.dp)
-                            ) {
-                                Text(
-                                    station.group,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.LightGray,
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Centered Station Title
-                            Text(
-                                station.name,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            // Centered Subtitle / Description / Specs
-                            Text(
-                                if (!station.description.isNullOrEmpty()) station.description!!
-                                else listOfNotNull(station.codec, station.bitrate, station.country).joinToString(" • "),
-                                fontSize = 11.sp,
-                                color = Color.Gray,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    // LIVE AUDIO SPECTRUM VISUALIZER (Configurable height, style & sensitivity from Settings)
-                    Card(
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF070B14)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = accentColor, modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Audio Spectrum", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                                Text(
-                                    "${uiState.spectrumStyle.uppercase()} • ${(uiState.spectrumSensitivity * 100).toInt()}%",
-                                    fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Color.Gray
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(uiState.spectrumHeight.dp)
-                            ) {
-                                CustomizableAudioSpectrumCanvas(
-                                    isPlaying = isPlaying,
-                                    accentColor = accentColor,
-                                    style = uiState.spectrumStyle,
-                                    sensitivity = uiState.spectrumSensitivity,
-                                    colorScheme = uiState.spectrumColorScheme,
-                                    speed = uiState.spectrumSpeed,
-                                    barHeightScale = uiState.spectrumBarHeightScale,
-                                    fftBars = uiState.fftBars,
-                                    useRealFft = uiState.useRealFft,
-                                )
-                            }
-                        }
-                    }
-
-                    // TACTILE PLAYBACK CONTROLS (Prev, SQUIRCLE Play Button, Next)
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(30.dp)
-                    ) {
-                        IconButton(onClick = onPrevious, modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(32.dp))
-                        }
-
-                        // SQUIRCLE ROUNDED-CORNER SQUARE PLAY BUTTON (PixelPlayer M3 Expressive style!)
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .background(accentColor)
-                                .shadow(18.dp, RoundedCornerShape(24.dp))
-                                .clickable { onPlayPause() },
+                            modifier = Modifier.size(80.dp).clip(CircleShape).background(Color.White).clickable { onPlayPause() },
                             contentAlignment = Alignment.Center
                         ) {
                             if (isLoading) {
-                                CircularProgressIndicator(color = Color(0xFF090D16), strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+                                CircularProgressIndicator(color = deckBg, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
                             } else {
                                 Icon(
-                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = Color(0xFF090D16),
-                                    modifier = Modifier.size(38.dp)
+                                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, 
+                                    contentDescription = null, tint = deckBg, modifier = Modifier.size(44.dp)
                                 )
                             }
                         }
-
-                        IconButton(onClick = onNext, modifier = Modifier.size(52.dp)) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(32.dp))
+                        IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(36.dp))
                         }
                     }
 
-                    // BOTTOM 3-WAY SEGMENTED PILL BUTTON [ 🌙 Sleep | ⏰ Wake | ⭐ Favorite ]
-                    Card(
-                        shape = RoundedCornerShape(28.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF111726)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(28.dp))
+                    // --- BOTTOM SEGMENTED PILL (PixelPlayer Style) ---
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(64.dp)
+                            .clip(RoundedCornerShape(20.dp)).background(Color(0xFF1C2230))
+                            .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Section 1: Sleep Timer
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clickable { onOpenSleep() },
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Sleep", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-
-                            // Vertical divider line
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(26.dp)
-                                    .background(Color(0x22FFFFFF))
+                        // Sleep Timer (Customizable)
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onOpenSleep() }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(24.dp))
+                        }
+                        // Thin Divider
+                        Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color(0x15FFFFFF)))
+                        
+                        // Alarm
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onOpenAlarm() }, contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = Color.LightGray, modifier = Modifier.size(24.dp))
+                        }
+                        // Thin Divider
+                        Box(modifier = Modifier.width(1.dp).height(28.dp).background(Color(0x15FFFFFF)))
+                        
+                        // Favorite
+                        Box(modifier = Modifier.weight(1f).fillMaxHeight().clickable { onToggleFavorite() }, contentAlignment = Alignment.Center) {
+                            Icon(
+                                if (station.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder, 
+                                contentDescription = "Favorite", tint = if (station.isFavorite) Color(0xFFEC4899) else Color.LightGray, 
+                                modifier = Modifier.size(24.dp)
                             )
-
-                            // Section 2: Wake-Up Alarm
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clickable { viewModel.openSettingsPage(SettingsSubPage.ALARM_CLOCK, fromDeck = true) },
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Alarm, contentDescription = "Wake", tint = Color(0xFFF97316), modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Wake", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-
-                            // Vertical divider line
-                            Box(
-                                modifier = Modifier
-                                    .width(1.dp)
-                                    .height(26.dp)
-                                    .background(Color(0x22FFFFFF))
-                            )
-
-                            // Section 3: Favorite Star Toggle
-                            Row(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .fillMaxHeight()
-                                    .clickable { onToggleFavorite() },
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    Icons.Default.Star,
-                                    contentDescription = "Favorite",
-                                    tint = if (station.isFavorite) Color(0xFFFBBF24) else Color.Gray,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    "Favorite",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (station.isFavorite) Color(0xFFFBBF24) else Color.White
-                                )
-                            }
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }
@@ -2847,208 +2616,77 @@ fun SpectrumSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
 @Composable
 fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val uiState by viewModel.uiState.collectAsState()
-    val bandInfo = listOf(
-        "60 Hz" to "Sub Bass",
-        "230 Hz" to "Low Mids",
-        "910 Hz" to "Midrange",
-        "3.6 kHz" to "Presence",
-        "14 kHz" to "Brilliance"
-    )
-    val presets = listOf("Flat", "Bass Boost", "Vocal Clarity", "Club/Dance", "Rock", "Classical", "Jazz")
+    val bandInfo = listOf("60", "230", "910", "3.6k", "14k")
+    val presets = listOf("Flat", "Bass", "Vocal", "Rock", "Jazz")
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // Presets Chips & Reset
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Equalizer Presets", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-            TextButton(
-                onClick = { viewModel.setEqPreset("Flat") },
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, tint = accentColor, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Reset Flat", fontSize = 11.sp, color = accentColor, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        
+        // Presets
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             presets.forEach { preset ->
-                val isSel = uiState.eqPreset == preset
+                val isSel = uiState.eqPreset.contains(preset, ignoreCase = true)
                 Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(if (isSel) accentColor else MaterialTheme.colorScheme.surface)
+                    modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                        .background(if (isSel) accentColor else MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { viewModel.setEqPreset(preset) }
-                        .padding(horizontal = 12.dp, vertical = 7.dp)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Text(
-                        preset,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
-                    )
+                    Text(preset, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(2.dp))
-
-        // 5-BAND FLUID INTERACTIVE EQUALIZER
-        Text("5-Band DSP Audio Equalizer (-12 dB to +12 dB)", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-
+        // Vertical Sliders
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))
+            modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))
         ) {
-            Column(
-                modifier = Modifier
-                    .padding(16.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(20.dp).height(200.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 uiState.eqBands.forEachIndexed { index, gain ->
-                    val (freq, desc) = bandInfo.getOrElse(index) { "$index Hz" to "Band" }
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color(0xFF090D16))
-                            .padding(horizontal = 12.dp, vertical = 10.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
+                        Text("${if(gain > 0) "+" else ""}${gain.toInt()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (gain != 0f) accentColor else Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        // The Slider Box
+                        Box(
+                            modifier = Modifier.width(32.dp).height(120.dp)
+                                .clip(RoundedCornerShape(16.dp)).background(Color(0xFF090D16))
+                                .border(1.dp, Color(0x20FFFFFF), RoundedCornerShape(16.dp)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(freq, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("($desc)", fontSize = 11.sp, color = Color.Gray)
-                            }
-
-                            // Dynamic gain chip with fine-tune steppers
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(
-                                    onClick = { viewModel.setEqBand(index, gain - 1f) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(Icons.Default.Remove, contentDescription = "Step down", tint = Color.Gray, modifier = Modifier.size(14.dp))
-                                }
-
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (gain != 0f) accentColor.copy(alpha = 0.2f) else Color(0x18FFFFFF))
-                                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        "${if (gain > 0) "+" else ""}${String.format("%.1f", gain)} dB",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = if (gain != 0f) accentColor else Color.Gray,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-
-                                IconButton(
-                                    onClick = { viewModel.setEqBand(index, gain + 1f) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = "Step up", tint = Color.Gray, modifier = Modifier.size(14.dp))
-                                }
-                            }
+                            // Center line
+                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0x40FFFFFF)))
+                            
+                            // Thumb
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(24.dp)
+                                    .offset(y = (-50 * (gain / 12f)).dp) // Moves thumb up/down
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(accentColor)
+                                    .pointerInput(Unit) {
+                                        detectVerticalDragGestures { change, dragAmount ->
+                                            change.consume()
+                                            val delta = -dragAmount / 4f // Sensitivity
+                                            viewModel.setEqBand(index, gain + delta)
+                                        }
+                                    }
+                            )
                         }
-
-                        // Fluid, smooth continuous Slider (unlocked, full freedom of movement)
-                        Slider(
-                            value = gain,
-                            onValueChange = { viewModel.setEqBand(index, it) },
-                            valueRange = -12f..12f,
-                            colors = SliderDefaults.colors(
-                                thumbColor = accentColor,
-                                activeTrackColor = accentColor,
-                                inactiveTrackColor = Color(0x30FFFFFF)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(36.dp)
-                        )
-
-                        // Quick Snap dB Markers
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            listOf(-12f, -6f, 0f, 6f, 12f).forEach { snapVal ->
-                                val isCurrentVal = (gain - snapVal) in -0.5f..0.5f
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(if (isCurrentVal) accentColor.copy(alpha = 0.25f) else Color(0x12FFFFFF))
-                                        .clickable { viewModel.setEqBand(index, snapVal) }
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        "${if (snapVal > 0) "+" else ""}${snapVal.toInt()}",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isCurrentVal) accentColor else Color.Gray,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                            }
-                        }
+                        
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(bandInfo[index], fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
                     }
                 }
             }
         }
-
-        // Audio Effects Plugins
-        Text("Audio Effects Plugins", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Bass Boost", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text("${(uiState.bassBoost * 100).toInt()}%", fontSize = 11.sp, color = accentColor)
-                }
-                Slider(
-                    value = uiState.bassBoost,
-                    onValueChange = { viewModel.setBassBoost(it) },
-                    colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
-                )
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Virtualizer / Spatializer", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text("${(uiState.virtualizer * 100).toInt()}%", fontSize = 11.sp, color = accentColor)
-                }
-                Slider(
-                    value = uiState.virtualizer,
-                    onValueChange = { viewModel.setVirtualizer(it) },
-                    colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
-                )
-            }
-        }
+        Text("Note: The 5-band DSP audio processor runs natively in the background. Adjustments apply instantly.", fontSize = 11.sp, color = Color.Gray, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -3636,194 +3274,82 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
     var importText by remember { mutableStateOf("") }
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        // Station Library Stats Card
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Station Library Stats", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("Total radio stations saved: ${stations.size}", fontSize = 12.sp, color = Color.LightGray)
-                Text("Favorited broadcasts: ${stations.count { it.isFavorite }}", fontSize = 12.sp, color = Color.LightGray)
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        
+        // Stats
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))) {
+            Row(modifier = Modifier.padding(20.dp).fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${stations.size}", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = accentColor)
+                    Text("Stations", fontSize = 12.sp, color = Color.Gray)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("${stations.count { it.isFavorite }}", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = accentColor)
+                    Text("Favorites", fontSize = 12.sp, color = Color.Gray)
+                }
             }
         }
 
-        // Backup Export & Import Card
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        // Export / Import
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Backup & Restore Stations (JSON)", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("Export all radio presets and custom added streams, or import back anytime.", fontSize = 11.sp, color = Color.Gray)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = {
-                            val json = viewModel.exportStationsJson()
-                            clipboardManager.setText(AnnotatedString(json))
-                            Toast.makeText(context, "Copied backup JSON (${stations.size} stations) to clipboard!", Toast.LENGTH_LONG).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f).height(42.dp)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Export Backup", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                    }
-
-                    Button(
-                        onClick = { showImportDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant, contentColor = MaterialTheme.colorScheme.onSurface),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.weight(1f).height(42.dp)
-                    ) {
-                        Icon(Icons.Default.FileDownload, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Import Backup", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                    }
+                Text("Data Management", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C2230)).clickable {
+                    val json = viewModel.exportStationsJson()
+                    clipboardManager.setText(AnnotatedString(json))
+                    Toast.makeText(context, "Copied JSON to clipboard!", Toast.LENGTH_SHORT).show()
+                }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Export Stations (JSON)", fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                 }
 
-                // Restore Defaults
-                OutlinedButton(
-                    onClick = { showRestoreConfirmDialog = true },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFEF4444)),
-                    modifier = Modifier.fillMaxWidth().height(40.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Restore Default Stations Library", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C2230)).clickable { showImportDialog = true }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.FileDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Import Stations", fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                }
+
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0x33EF4444)).clickable { showRestoreConfirmDialog = true }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("Restore Defaults", fontSize = 14.sp, color = Color(0xFFEF4444), modifier = Modifier.weight(1f))
                 }
             }
         }
 
-        // Cloud Room Sync Code Card
-        Card(
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Cloud Room Sync Code", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("Sync your curated presets across devices using this 6-character room token.", fontSize = 11.sp, color = Color.Gray)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color(0xFF090D16))
-                            .padding(horizontal = 14.dp, vertical = 10.dp)
-                    ) {
-                        Text(uiState.syncRoomCode, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace, color = accentColor)
-                    }
-
-                    Button(
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(uiState.syncRoomCode))
-                            Toast.makeText(context, "Sync Room Code copied!", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.width(80.dp).height(40.dp)
-                    ) {
-                        Text("Copy", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                    }
-
-                    IconButton(
-                        onClick = { viewModel.generateSyncRoomCode() },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = Color.Gray)
+        // Sync Code
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface), modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(20.dp))) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("Cloud Room Sync", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C2230)).padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(uiState.syncRoomCode, fontSize = 16.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, color = accentColor, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { viewModel.generateSyncRoomCode() }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Regenerate", tint = Color.White, modifier = Modifier.size(20.dp))
                     }
                 }
             }
         }
 
-        // Import Dialog
         if (showImportDialog) {
             AlertDialog(
                 onDismissRequest = { showImportDialog = false },
-                title = { Text("Import Station Backup") },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Paste your exported JSON stations list below:", fontSize = 12.sp, color = Color.Gray)
-                        OutlinedTextField(
-                            value = importText,
-                            onValueChange = { importText = it },
-                            placeholder = { Text("[{\"id\":\"1\", \"name\":\"...\"}]", fontSize = 11.sp) },
-                            modifier = Modifier.fillMaxWidth().height(140.dp),
-                            textStyle = TextStyle(fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                        )
-                    }
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            if (importText.isNotBlank()) {
-                                val success = viewModel.importStationsJson(importText.trim())
-                                if (success) {
-                                    Toast.makeText(context, "Successfully restored stations!", Toast.LENGTH_LONG).show()
-                                    showImportDialog = false
-                                    importText = ""
-                                } else {
-                                    Toast.makeText(context, "Invalid JSON backup format", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))
-                    ) {
-                        Text("Import & Merge")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showImportDialog = false }) {
-                        Text("Cancel", color = Color.Gray)
-                    }
-                }
+                title = { Text("Import JSON") },
+                text = { OutlinedTextField(value = importText, onValueChange = { importText = it }, placeholder = { Text("Paste JSON here...") }, modifier = Modifier.fillMaxWidth().height(140.dp)) },
+                confirmButton = { Button(onClick = { if (viewModel.importStationsJson(importText)) { showImportDialog = false; Toast.makeText(context, "Imported!", Toast.LENGTH_SHORT).show() } }) { Text("Import") } },
+                dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text("Cancel") } }
             )
         }
-
-        // Restore Confirm Dialog
         if (showRestoreConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showRestoreConfirmDialog = false },
-                title = { Text("Restore Default Stations?") },
-                text = { Text("This will reset your station list back to the default curated broadcasts.", fontSize = 13.sp) },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            viewModel.restoreDefaultStations()
-                            Toast.makeText(context, "Restored default stations", Toast.LENGTH_SHORT).show()
-                            showRestoreConfirmDialog = false
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                    ) {
-                        Text("Restore Defaults")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showRestoreConfirmDialog = false }) {
-                        Text("Cancel", color = Color.Gray)
-                    }
-                }
+                title = { Text("Restore Defaults?") },
+                text = { Text("This will overwrite your current list.") },
+                confirmButton = { Button(onClick = { viewModel.restoreDefaultStations(); showRestoreConfirmDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))) { Text("Restore") } },
+                dismissButton = { TextButton(onClick = { showRestoreConfirmDialog = false }) { Text("Cancel") } }
             )
         }
     }
@@ -4076,8 +3602,8 @@ fun SleepTimerDialog(
     accentColor: Color,
     onClose: () -> Unit
 ) {
+    val context = LocalContext.current
     val timerState by viewModel.sleepTimerManager.timerState.collectAsState()
-    var selectedMins by remember { mutableStateOf(30) }
 
     Dialog(onDismissRequest = onClose) {
         Card(
@@ -4086,19 +3612,11 @@ fun SleepTimerDialog(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Sleep Timer", fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    IconButton(onClick = onClose) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
-                    }
-                }
+                Text("Sleep Timer", fontSize = 18.sp, fontWeight = FontWeight.Bold)
 
                 if (timerState.isActive) {
                     val minutesLeft = (timerState.remainingSeconds / 60)
@@ -4106,56 +3624,56 @@ fun SleepTimerDialog(
 
                     Text(
                         String.format("%02d:%02d", minutesLeft, secondsLeft),
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = accentColor,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        fontSize = 48.sp, fontWeight = FontWeight.ExtraBold, color = accentColor, fontFamily = FontFamily.Monospace
                     )
 
                     Button(
                         onClick = { viewModel.sleepTimerManager.cancelTimer() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Stop Sleep Timer")
+                        Text("Cancel Timer", fontWeight = FontWeight.Bold)
                     }
                 } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        listOf(15, 30, 45, 60).forEach { mins ->
-                            val isSel = selectedMins == mins
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isSel) accentColor else MaterialTheme.colorScheme.surfaceVariant)
-                                    .clickable { selectedMins = mins }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "${mins}m",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
-                    }
+                    Text("Choose exactly when the radio should stop.", fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
 
                     Button(
                         onClick = {
-                            viewModel.sleepTimerManager.startTimer(selectedMins, fadeOut = true)
-                            onClose()
+                            val cal = Calendar.getInstance()
+                            TimePickerDialog(
+                                context,
+                                { _, hour, min ->
+                                    val now = Calendar.getInstance()
+                                    val target = Calendar.getInstance().apply { set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, min); set(Calendar.SECOND, 0) }
+                                    if (target.before(now)) target.add(Calendar.DAY_OF_YEAR, 1) // If time passed, schedule tomorrow
+                                    val diffMs = target.timeInMillis - now.timeInMillis
+                                    val diffMins = (diffMs / 60000).toInt()
+                                    if (diffMins > 0) {
+                                        viewModel.sleepTimerManager.startTimer(diffMins, fadeOut = true)
+                                        onClose()
+                                    }
+                                },
+                                cal.get(Calendar.HOUR_OF_DAY),
+                                cal.get(Calendar.MINUTE),
+                                false
+                            ).show()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
-                        Text("Start ${selectedMins} Min Timer", fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Pick Custom Time", fontWeight = FontWeight.Bold)
+                    }
+                    
+                    OutlinedButton(
+                        onClick = { viewModel.sleepTimerManager.startTimer(30, fadeOut = true); onClose() },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("Quick 30 Minutes")
                     }
                 }
             }
