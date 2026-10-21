@@ -88,6 +88,7 @@ fun AetherWaveRadioTheme(
     backgroundColorHex: String = "#090D16",
     cardColorHex: String = "#111726",
     themeFontStyle: String = "sans",
+    themeFontColorHex: String = "auto",
     themeMode: String = "dark",
     isMonet: Boolean = false,
     content: @Composable () -> Unit
@@ -103,6 +104,12 @@ fun AetherWaveRadioTheme(
     val customBgColor = parseHexColor(backgroundColorHex, if (isDark) DarkBackgroundDefault else LightBackgroundDefault)
     val customCardColor = parseHexColor(cardColorHex, if (isDark) DarkSurfaceDefault else LightSurfaceDefault)
     val fontFamily = resolveFontFamily(themeFontStyle)
+    // Font color: "auto" picks black/white based on card luminance
+    val autoFontColor = if (cardColorHex.luminanceHex() > 0.5f) Color(0xFF0F172A) else Color(0xFFF1F5F9)
+    val resolvedFontColor = if (themeFontColorHex.equals("auto", ignoreCase = true))
+        autoFontColor
+    else
+        parseHexColor(themeFontColorHex, autoFontColor)
 
     val colorScheme = when {
         isMonet && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
@@ -116,11 +123,11 @@ fun AetherWaveRadioTheme(
             secondary = primaryColor.copy(alpha = 0.85f),
             onSecondary = Color.White,
             surface = customCardColor,
-            onSurface = Color(0xFFF1F5F9),
+            onSurface = resolvedFontColor,
             surfaceVariant = customCardColor.copy(alpha = 0.85f),
-            onSurfaceVariant = Color(0xFFCBD5E1),
+            onSurfaceVariant = resolvedFontColor.copy(alpha = 0.7f),
             background = customBgColor,
-            onBackground = Color(0xFFF1F5F9)
+            onBackground = resolvedFontColor
         )
         else -> lightColorScheme(
             primary = primaryColor,
@@ -130,11 +137,11 @@ fun AetherWaveRadioTheme(
             secondary = primaryColor.copy(alpha = 0.85f),
             onSecondary = Color.White,
             surface = customCardColor,
-            onSurface = if (customCardColor == LightSurfaceDefault) Color(0xFF0F172A) else Color(0xFFF1F5F9),
+            onSurface = resolvedFontColor,
             surfaceVariant = customCardColor.copy(alpha = 0.85f),
-            onSurfaceVariant = Color(0xFFCBD5E1),
+            onSurfaceVariant = resolvedFontColor.copy(alpha = 0.7f),
             background = customBgColor,
-            onBackground = Color(0xFF0F172A)
+            onBackground = resolvedFontColor
         )
     }
 
@@ -144,4 +151,16 @@ fun AetherWaveRadioTheme(
         shapes = AppShapes,
         content = content
     )
+}
+
+// Approximate relative luminance of a hex color (0..1)
+private fun String.luminanceHex(): Float {
+    return try {
+        val clean = replace("#", "").trim()
+        val v = clean.toLong(16)
+        val r = ((v shr 16) and 0xFF) / 255f
+        val g = ((v shr 8) and 0xFF) / 255f
+        val b = (v and 0xFF) / 255f
+        0.299f * r + 0.587f * g + 0.114f * b
+    } catch (_: Exception) { 0.1f }
 }
