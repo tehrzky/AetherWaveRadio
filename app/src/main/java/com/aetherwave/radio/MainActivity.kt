@@ -759,7 +759,7 @@ fun StationGridCardV1(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(152.dp)
+            .height(210.dp) // Taller card for big artwork
             .border(
                 width = if (isCurrent) 1.5.dp else 1.dp,
                 color = if (isCurrent) accentColor else Color(0x14FFFFFF),
@@ -771,13 +771,16 @@ fun StationGridCardV1(
             )
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxSize()
         ) {
+            // BIG ARTWORK
             Box(
                 modifier = Modifier
-                    .size(68.dp)
-                    .clip(RoundedCornerShape(14.dp))
+                    .fillMaxWidth()
+                    .height(130.dp)
+                    .clip(RoundedCornerShape(12.dp))
                     .background(Color.Black),
                 contentAlignment = Alignment.Center
             ) {
@@ -789,45 +792,99 @@ fun StationGridCardV1(
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Icon(
-                        Icons.Default.Radio,
-                        contentDescription = null,
-                        tint = Color.Gray,
-                        modifier = Modifier.size(32.dp)
-                    )
+                    Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(40.dp))
                 }
 
+                // THREE BARS at bottom left when playing
                 if (isPlaying) {
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Black.copy(alpha = 0.5f)),
-                        contentAlignment = Alignment.Center
+                            .align(Alignment.BottomStart)
+                            .padding(8.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color.Black.copy(alpha = 0.6f))
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
                     ) {
                         MiniLiveEqualizerBars(accentColor = accentColor)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            // Bottom Row: Genre on Left, Country on Right
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x12FFFFFF)).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                    Text(station.group, fontSize = 10.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // STATION NAME
+            Text(
+                station.name,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isCurrent) accentColor else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Spacer(modifier = Modifier.weight(1f)) // Pushes the bottom row to the very bottom
+
+            // BOTTOM ROW: Genre on Left, Country on Right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x12FFFFFF))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        station.group,
+                        fontSize = 10.sp,
+                        color = Color.Gray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
-                val countryCode = when (station.country?.lowercase()) {
-                    "usa", "united states" -> "US"
-                    "philippines" -> "PH"
-                    "japan" -> "JP"
-                    "switzerland" -> "CH"
-                    "uk", "united kingdom" -> "UK"
-                    "spain" -> "ES"
-                    "global", "international" -> "🌐"
-                    else -> station.country?.take(3)?.uppercase() ?: "MP3"
+
+                // IMPROVED COUNTRY PARSER
+                val countryCode = remember(station.country) {
+                    val c = station.country?.trim()?.lowercase() ?: ""
+                    when {
+                        c.contains("philippines") || c.contains("pilipinas") || c == "ph" -> "PH"
+                        c.contains("united states") || c.contains("usa") || c == "us" -> "US"
+                        c.contains("japan") || c == "jp" -> "JP"
+                        c.contains("switzerland") || c == "ch" -> "CH"
+                        c.contains("united kingdom") || c.contains("uk") || c == "gb" -> "UK"
+                        c.contains("spain") || c == "es" -> "ES"
+                        c.contains("thailand") || c == "th" -> "TH"
+                        c.contains("germany") || c == "de" -> "DE"
+                        c.contains("france") || c == "fr" -> "FR"
+                        c.contains("australia") || c == "au" -> "AU"
+                        c.contains("canada") || c == "ca" -> "CA"
+                        c.contains("india") || c == "in" -> "IN"
+                        c.contains("brazil") || c == "br" -> "BR"
+                        c.contains("global") || c.contains("international") || c.isBlank() -> "🌐"
+                        // If it's already a 2-letter code, just uppercase it
+                        c.length == 2 -> c.uppercase()
+                        // Otherwise take first 3 letters
+                        else -> c.take(3).uppercase()
+                    }
                 }
-                Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) {
-                    Text(countryCode, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+
+                if (countryCode.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 5.dp, vertical = 1.dp)
+                    ) {
+                        Text(
+                            countryCode,
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.LightGray,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }
@@ -1505,8 +1562,8 @@ fun CustomizableAudioSpectrumCanvas(
         for (i in 0 until barCount) {
             val h = if (isPlaying) {
                 val rawValue = if (useRealFft && i < fftBars.size) {
-                    // REAL FFT
-                    fftBars[i]
+                    // REAL FFT: Apply a 2.5x boost so quiet streams still bounce
+                    (fftBars[i] * 2.5f).coerceIn(0f, 1f)
                 } else {
                     // SMOOTH FALLBACK WAVE
                     val t = phase
@@ -1516,7 +1573,6 @@ fun CustomizableAudioSpectrumCanvas(
                     ((wave1 + wave2 + wave3) / 3f).toFloat()
                 }
                 
-                // Apply Sensitivity & Bar Height Scale
                 val normalized = (rawValue * sensitivity * barHeightScale).coerceIn(0f, 1f)
                 (normalized * (size.height - 4f)).coerceIn(4f, size.height)
             } else {
