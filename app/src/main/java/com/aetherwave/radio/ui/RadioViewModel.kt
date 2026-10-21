@@ -15,7 +15,6 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.aetherwave.radio.MainActivity
 import com.aetherwave.radio.data.DefaultStations
 import com.aetherwave.radio.data.SortOption
 import com.aetherwave.radio.data.Station
@@ -43,8 +42,6 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.Calendar
 
-// ---------- PHASE 1: NEW DATA TYPES ----------
-
 data class SavedThemePreset(
     val id: String,
     val name: String,
@@ -56,25 +53,13 @@ data class SavedThemePreset(
 )
 
 enum class SettingsSubPage {
-    PLAYER,
-    APPEARANCE,
-    EQUALIZER,
-    SPECTRUM_VISUALIZER,
-    GENRE_MANAGER,
-    CLOUD_BACKUP,
-    ALARM_CLOCK,
-    BLUETOOTH,
-    ABOUT
+    PLAYER, APPEARANCE, EQUALIZER, SPECTRUM_VISUALIZER,
+    GENRE_MANAGER, CLOUD_BACKUP, ALARM_CLOCK, BLUETOOTH, ABOUT
 }
 
 data class ScrapedRadioStation(
-    val name: String,
-    val url: String,
-    val favicon: String?,
-    val tags: String?,
-    val country: String?,
-    val codec: String?,
-    val bitrate: Int?
+    val name: String, val url: String, val favicon: String?,
+    val tags: String?, val country: String?, val codec: String?, val bitrate: Int?
 )
 
 data class RadioUiState(
@@ -89,8 +74,8 @@ data class RadioUiState(
     val themeColorHex: String = "#F59E0B",
     val backgroundColorHex: String = "#090D16",
     val cardColorHex: String = "#111726",
-    val themeFontStyle: String = "sans",       // NEW
-    val themeFontColorHex: String = "auto",    // NEW — "auto" or "#RRGGBB"
+    val themeFontStyle: String = "sans",
+    val themeFontColorHex: String = "auto",
     val themeMode: String = "dark",
     val isMonetEnabled: Boolean = false,
     val isMuted: Boolean = false,
@@ -98,11 +83,17 @@ data class RadioUiState(
     val eqBands: List<Float> = listOf(0f, 0f, 0f, 0f, 0f),
     val bassBoost: Float = 0.5f,
     val virtualizer: Float = 0.3f,
+    // Spectrum
     val spectrumStyle: String = "Bars",
-    val spectrumHeight: Int = 85,
+    val spectrumHeight: Int = 85, // Box height
+    val spectrumBarHeightScale: Float = 1.0f, // 0.3 to 1.0 (bar max height)
     val spectrumSensitivity: Float = 1.2f,
     val spectrumColorScheme: String = "Accent",
     val spectrumSpeed: String = "Normal",
+    // Deck Theme (Independent from main theme)
+    val deckAccentHex: String = "#F59E0B",
+    val deckBackgroundHex: String = "#0B101D",
+    // Other
     val syncRoomCode: String = "RADIO-A89K",
     val isAutoSync: Boolean = false,
     val isArrangeMode: Boolean = false,
@@ -120,11 +111,10 @@ data class RadioUiState(
     val autoResumeOnBluetooth: Boolean = false,
     val highQualityAudio: Boolean = true,
     val openedSettingsFromDeck: Boolean = false,
-    // ---- Phase 1 additions ----
-    val fftBars: FloatArray = FloatArray(64),   // NEW: live FFT
-    val useRealFft: Boolean = false,            // NEW: real data available?
-    val savedThemePresets: List<SavedThemePreset> = emptyList(), // NEW
-    val activeThemePresetId: String? = null     // NEW
+    val fftBars: FloatArray = FloatArray(64),
+    val useRealFft: Boolean = false,
+    val savedThemePresets: List<SavedThemePreset> = emptyList(),
+    val activeThemePresetId: String? = null
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
@@ -170,9 +160,12 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             sortOption = SortOption.valueOf(prefs.getString("sort_option", SortOption.CUSTOM.name) ?: SortOption.CUSTOM.name),
             spectrumStyle = prefs.getString("spec_style", "Bars") ?: "Bars",
             spectrumHeight = prefs.getInt("spec_height", 85),
+            spectrumBarHeightScale = prefs.getFloat("spec_bar_scale", 1.0f),
             spectrumSensitivity = prefs.getFloat("spec_sens", 1.2f),
             spectrumColorScheme = prefs.getString("spec_color", "Accent") ?: "Accent",
             spectrumSpeed = prefs.getString("spec_speed", "Normal") ?: "Normal",
+            deckAccentHex = prefs.getString("deck_accent", "#F59E0B") ?: "#F59E0B",
+            deckBackgroundHex = prefs.getString("deck_bg", "#0B101D") ?: "#0B101D",
             syncRoomCode = prefs.getString("sync_room", "RADIO-A89K") ?: "RADIO-A89K",
             alarmEnabled = prefs.getBoolean("alarm_enabled", false),
             alarmHour = prefs.getInt("alarm_hour", 7),
@@ -191,9 +184,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     private var originalVolumeBeforeFade = 0.85f
 
     val sleepTimerManager = SleepTimerManager(
-        onTickVolumeFade = { ratio ->
-            mediaController?.volume = originalVolumeBeforeFade * ratio
-        },
+        onTickVolumeFade = { ratio -> mediaController?.volume = originalVolumeBeforeFade * ratio },
         onTimerFinished = {
             pausePlayback()
             mediaController?.volume = originalVolumeBeforeFade
@@ -205,8 +196,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         observeFft()
     }
 
-    // ---------- PHASE 1: FFT OBSERVER ----------
-
     private fun observeFft() {
         fftJob?.cancel()
         fftJob = viewModelScope.launch {
@@ -217,92 +206,9 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             RadioPlaybackService.hasRealFft.collect { hasReal ->
                 _uiState.value = _uiState.value.copy(useRealFft = hasReal)
-                // If real FFT claims to be on but stays silent for >3s while playing, force fallback
-                if (!hasReal && _uiState.value.isPlaying) {
-                    // nothing extra; UI will see useRealFft=false and use fake animation
-                }
             }
         }
     }
-
-    // ---------- PHASE 1: THEME PRESET METHODS ----------
-
-    fun setFontStyle(style: String) {
-        _uiState.value = _uiState.value.copy(themeFontStyle = style)
-        prefs.edit().putString("theme_font", style).apply()
-    }
-
-    fun setFontColor(hex: String) {
-        _uiState.value = _uiState.value.copy(themeFontColorHex = hex, activeThemePresetId = null)
-        prefs.edit().putString("theme_font_color", hex).remove("active_preset_id").apply()
-    }
-
-    fun saveCurrentAsPreset(name: String) {
-        val trimmed = name.trim()
-        if (trimmed.isBlank()) return
-        val s = _uiState.value
-        val newPreset = SavedThemePreset(
-            id = "preset_${System.currentTimeMillis()}",
-            name = trimmed,
-            accentHex = s.themeColorHex,
-            backgroundHex = s.backgroundColorHex,
-            cardHex = s.cardColorHex,
-            fontStyle = s.themeFontStyle,
-            fontColorHex = s.themeFontColorHex
-        )
-        val updated = s.savedThemePresets + newPreset
-        _uiState.value = s.copy(
-            savedThemePresets = updated,
-            activeThemePresetId = newPreset.id
-        )
-        savePresetsToPrefs(updated)
-        prefs.edit().putString("active_preset_id", newPreset.id).apply()
-    }
-
-    fun applyPreset(id: String) {
-        val preset = _uiState.value.savedThemePresets.firstOrNull { it.id == id } ?: return
-        _uiState.value = _uiState.value.copy(
-            themeColorHex = preset.accentHex,
-            backgroundColorHex = preset.backgroundHex,
-            cardColorHex = preset.cardHex,
-            themeFontStyle = preset.fontStyle,
-            themeFontColorHex = preset.fontColorHex,
-            activeThemePresetId = preset.id
-        )
-        prefs.edit()
-            .putString("theme_color", preset.accentHex)
-            .putString("bg_color", preset.backgroundHex)
-            .putString("card_color", preset.cardHex)
-            .putString("theme_font", preset.fontStyle)
-            .putString("theme_font_color", preset.fontColorHex)
-            .putString("active_preset_id", preset.id)
-            .apply()
-    }
-
-    fun deletePreset(id: String) {
-        val updated = _uiState.value.savedThemePresets.filter { it.id != id }
-        _uiState.value = _uiState.value.copy(
-            savedThemePresets = updated,
-            activeThemePresetId = if (_uiState.value.activeThemePresetId == id) null else _uiState.value.activeThemePresetId
-        )
-        savePresetsToPrefs(updated)
-        if (_uiState.value.activeThemePresetId == null) {
-            prefs.edit().remove("active_preset_id").apply()
-        }
-    }
-
-    private fun loadSavedPresets(): List<SavedThemePreset> {
-        val json = prefs.getString("theme_presets_json", null) ?: return emptyList()
-        return try {
-            gson.fromJson(json, object : TypeToken<List<SavedThemePreset>>() {}.type) ?: emptyList()
-        } catch (_: Exception) { emptyList() }
-    }
-
-    private fun savePresetsToPrefs(list: List<SavedThemePreset>) {
-        prefs.edit().putString("theme_presets_json", gson.toJson(list)).apply()
-    }
-
-    // ---------- EXISTING METHODS (unchanged) ----------
 
     fun syncPlayerState() {
         mediaController?.let { player ->
@@ -313,8 +219,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                 ?: _stations.value.firstOrNull { it.id == prefs.getString("last_played_station_id", null) }
             if (matched != null) {
                 _uiState.value = _uiState.value.copy(
-                    currentStation = matched,
-                    isPlaying = isPlaying,
+                    currentStation = matched, isPlaying = isPlaying,
                     isLoading = player.playbackState == Player.STATE_BUFFERING
                 )
             }
@@ -335,7 +240,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                         _uiState.value = _uiState.value.copy(isLoading = playbackState == Player.STATE_BUFFERING)
                     }
                     override fun onPlayerError(error: PlaybackException) {
-                        Log.e("RadioViewModel", "Player error: ${error.errorCodeName}", error)
+                        Log.e("RadioViewModel", "Player error", error)
                         _uiState.value = _uiState.value.copy(isPlaying = false, isLoading = false)
                     }
                     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -350,9 +255,9 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 })
                 syncPlayerState()
-                pendingPlayStation?.let { pending -> playStation(pending); pendingPlayStation = null }
+                pendingPlayStation?.let { playStation(it); pendingPlayStation = null }
             } catch (e: Exception) {
-                Log.e("RadioViewModel", "MediaController error: ${e.message}", e)
+                Log.e("RadioViewModel", "MediaController error", e)
             }
         }, MoreExecutors.directExecutor())
     }
@@ -372,10 +277,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         val query = state.searchQuery.trim().lowercase()
         val group = state.selectedGroup
         var list = stationsList.filter { st ->
-            val matchQuery = query.isEmpty() ||
-                    st.name.lowercase().contains(query) ||
-                    st.group.lowercase().contains(query) ||
-                    (st.country?.lowercase()?.contains(query) ?: false)
+            val matchQuery = query.isEmpty() || st.name.lowercase().contains(query) || st.group.lowercase().contains(query) || (st.country?.lowercase()?.contains(query) ?: false)
             val matchGroup = when {
                 group.equals("All", ignoreCase = true) -> true
                 group.equals("Favorites", ignoreCase = true) -> st.isFavorite
@@ -407,14 +309,13 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                 pendingPlayStation = station
             }
         } catch (e: Exception) {
-            Log.e("RadioViewModel", "playStation error: ${e.message}", e)
+            Log.e("RadioViewModel", "playStation error", e)
             _uiState.value = _uiState.value.copy(isLoading = false, isPlaying = false)
         }
     }
 
     fun pausePlayback() {
-        try { mediaController?.pause(); _uiState.value = _uiState.value.copy(isPlaying = false) }
-        catch (e: Exception) { Log.e("RadioViewModel", "pause error: ${e.message}") }
+        try { mediaController?.pause(); _uiState.value = _uiState.value.copy(isPlaying = false) } catch (e: Exception) {}
     }
 
     fun resumePlayback() {
@@ -425,7 +326,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                 mediaController?.play()
                 _uiState.value = _uiState.value.copy(isPlaying = true)
             }
-        } catch (e: Exception) { Log.e("RadioViewModel", "resume error: ${e.message}") }
+        } catch (e: Exception) {}
     }
 
     fun playNext() {
@@ -448,19 +349,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         else { mediaController?.volume = originalVolumeBeforeFade; _uiState.value = _uiState.value.copy(isMuted = false) }
     }
 
-    private fun pushEqToService() {
-        try {
-            val ctx = getApplication<Application>()
-            val i = Intent(ctx, RadioPlaybackService::class.java).apply {
-                action = RadioPlaybackService.ACTION_SET_EQ
-                putExtra("eq_bands", _uiState.value.eqBands.toFloatArray())
-                putExtra("bass_boost", _uiState.value.bassBoost)
-                putExtra("virtualizer", _uiState.value.virtualizer)
-            }
-            ctx.startService(i)
-        } catch (e: Exception) { Log.e("RadioViewModel", "pushEq error: ${e.message}") }
-    }
-
     fun setEqPreset(preset: String) {
         val bands = when (preset) {
             "Bass Boost" -> listOf(6f, 4f, 1f, 0f, -1f)
@@ -472,8 +360,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             else -> listOf(0f, 0f, 0f, 0f, 0f)
         }
         _uiState.value = _uiState.value.copy(eqPreset = preset, eqBands = bands)
-        prefs.edit().putString("eq_bands_json", gson.toJson(bands.toFloatArray())).putString("eq_preset", preset).apply()
-        pushEqToService()
     }
 
     fun setEqBand(bandIndex: Int, value: Float) {
@@ -481,24 +367,11 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             val updated = _uiState.value.eqBands.toMutableList()
             updated[bandIndex] = value.coerceIn(-12f, 12f)
             _uiState.value = _uiState.value.copy(eqBands = updated, eqPreset = "Custom")
-            prefs.edit().putString("eq_bands_json", gson.toJson(updated.toFloatArray())).putString("eq_preset", "Custom").apply()
-            pushEqToService()
         }
     }
 
-    fun setBassBoost(level: Float) {
-        val c = level.coerceIn(0f, 1f)
-        _uiState.value = _uiState.value.copy(bassBoost = c)
-        prefs.edit().putFloat("bass_boost", c).apply()
-        pushEqToService()
-    }
-
-    fun setVirtualizer(level: Float) {
-        val c = level.coerceIn(0f, 1f)
-        _uiState.value = _uiState.value.copy(virtualizer = c)
-        prefs.edit().putFloat("virtualizer", c).apply()
-        pushEqToService()
-    }
+    fun setBassBoost(level: Float) { _uiState.value = _uiState.value.copy(bassBoost = level.coerceIn(0f, 1f)) }
+    fun setVirtualizer(level: Float) { _uiState.value = _uiState.value.copy(virtualizer = level.coerceIn(0f, 1f)) }
 
     fun toggleFavorite(stationId: String) {
         _stations.value = _stations.value.map { if (it.id == stationId) it.copy(isFavorite = !it.isFavorite) else it }
@@ -526,59 +399,105 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun navigateToSubPage(subPage: SettingsSubPage) {
-        _uiState.value = _uiState.value.copy(currentSettingsSubPage = subPage)
-    }
+    fun navigateToSubPage(subPage: SettingsSubPage) { _uiState.value = _uiState.value.copy(currentSettingsSubPage = subPage) }
 
-    fun setSpectrumSettings(style: String? = null, height: Int? = null, sensitivity: Float? = null, colorScheme: String? = null, speed: String? = null) {
+    fun setSpectrumSettings(style: String? = null, height: Int? = null, barHeightScale: Float? = null, sensitivity: Float? = null, colorScheme: String? = null, speed: String? = null) {
         val s = _uiState.value
         val ns = style ?: s.spectrumStyle
         val nh = height ?: s.spectrumHeight
+        val nb = barHeightScale ?: s.spectrumBarHeightScale
         val nse = sensitivity ?: s.spectrumSensitivity
         val nc = colorScheme ?: s.spectrumColorScheme
         val nsp = speed ?: s.spectrumSpeed
-        _uiState.value = s.copy(spectrumStyle = ns, spectrumHeight = nh, spectrumSensitivity = nse, spectrumColorScheme = nc, spectrumSpeed = nsp)
-        prefs.edit().putString("spec_style", ns).putInt("spec_height", nh).putFloat("spec_sens", nse).putString("spec_color", nc).putString("spec_speed", nsp).apply()
+        _uiState.value = s.copy(spectrumStyle = ns, spectrumHeight = nh, spectrumBarHeightScale = nb, spectrumSensitivity = nse, spectrumColorScheme = nc, spectrumSpeed = nsp)
+        prefs.edit().putString("spec_style", ns).putInt("spec_height", nh).putFloat("spec_bar_scale", nb).putFloat("spec_sens", nse).putString("spec_color", nc).putString("spec_speed", nsp).apply()
     }
 
-    fun setThemeColor(colorHex: String) {
-        _uiState.value = _uiState.value.copy(themeColorHex = colorHex, activeThemePresetId = null)
-        prefs.edit().putString("theme_color", colorHex).remove("active_preset_id").apply()
+    fun setThemeColor(hex: String) { _uiState.value = _uiState.value.copy(themeColorHex = hex, activeThemePresetId = null); prefs.edit().putString("theme_color", hex).remove("active_preset_id").apply() }
+    fun setBackgroundColor(hex: String) { _uiState.value = _uiState.value.copy(backgroundColorHex = hex, activeThemePresetId = null); prefs.edit().putString("bg_color", hex).remove("active_preset_id").apply() }
+    fun setCardColor(hex: String) { _uiState.value = _uiState.value.copy(cardColorHex = hex, activeThemePresetId = null); prefs.edit().putString("card_color", hex).remove("active_preset_id").apply() }
+    fun setFontStyle(style: String) { _uiState.value = _uiState.value.copy(themeFontStyle = style, activeThemePresetId = null); prefs.edit().putString("theme_font", style).remove("active_preset_id").apply() }
+    fun setFontColor(hex: String) { _uiState.value = _uiState.value.copy(themeFontColorHex = hex, activeThemePresetId = null); prefs.edit().putString("theme_font_color", hex).remove("active_preset_id").apply() }
+    
+    fun setDeckTheme(accentHex: String? = null, bgHex: String? = null) {
+        val s = _uiState.value
+        val na = accentHex ?: s.deckAccentHex
+        val nb = bgHex ?: s.deckBackgroundHex
+        _uiState.value = s.copy(deckAccentHex = na, deckBackgroundHex = nb)
+        prefs.edit().putString("deck_accent", na).putString("deck_bg", nb).apply()
     }
-    fun setBackgroundColor(bgHex: String) {
-        _uiState.value = _uiState.value.copy(backgroundColorHex = bgHex, activeThemePresetId = null)
-        prefs.edit().putString("bg_color", bgHex).remove("active_preset_id").apply()
-    }
-    fun setCardColor(hex: String) {
-        _uiState.value = _uiState.value.copy(cardColorHex = hex, activeThemePresetId = null)
-        prefs.edit().putString("card_color", hex).remove("active_preset_id").apply()
-    }
+
     fun setThemeMode(mode: String) { _uiState.value = _uiState.value.copy(themeMode = mode); prefs.edit().putString("theme_mode", mode).apply() }
-    fun setBufferSize(size: String) { _uiState.value = _uiState.value.copy(bufferSize = size); prefs.edit().putString("buffer_size", size).apply() }
-    fun setStopOnHeadsetDisconnect(enabled: Boolean) { _uiState.value = _uiState.value.copy(stopOnHeadsetDisconnect = enabled); prefs.edit().putBoolean("stop_on_disconnect", enabled).apply() }
-    fun setHighQualityAudio(enabled: Boolean) { _uiState.value = _uiState.value.copy(highQualityAudio = enabled); prefs.edit().putBoolean("high_quality", enabled).apply() }
     fun setMonetEnabled(enabled: Boolean) { _uiState.value = _uiState.value.copy(isMonetEnabled = enabled); prefs.edit().putBoolean("monet_enabled", enabled).apply() }
     fun setSelectedGroup(group: String) { _uiState.value = _uiState.value.copy(selectedGroup = group); prefs.edit().putString("selected_genre_group", group).apply() }
     fun setViewMode(mode: ViewMode) { _uiState.value = _uiState.value.copy(viewMode = mode); prefs.edit().putString("view_mode", mode.name).apply() }
     fun setSortOption(option: SortOption) { _uiState.value = _uiState.value.copy(sortOption = option); prefs.edit().putString("sort_option", option.name).apply() }
     fun setSearchQuery(query: String) { _uiState.value = _uiState.value.copy(searchQuery = query) }
 
+    fun saveCurrentAsPreset(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isBlank()) return
+        val s = _uiState.value
+        val newPreset = SavedThemePreset(
+            id = "preset_${System.currentTimeMillis()}", name = trimmed,
+            accentHex = s.themeColorHex, backgroundHex = s.backgroundColorHex,
+            cardHex = s.cardColorHex, fontStyle = s.themeFontStyle, fontColorHex = s.themeFontColorHex
+        )
+        val updated = s.savedThemePresets + newPreset
+        _uiState.value = s.copy(savedThemePresets = updated, activeThemePresetId = newPreset.id)
+        savePresetsToPrefs(updated)
+        prefs.edit().putString("active_preset_id", newPreset.id).apply()
+    }
+
+    fun applyPreset(id: String) {
+        val preset = _uiState.value.savedThemePresets.firstOrNull { it.id == id } ?: return
+        _uiState.value = _uiState.value.copy(
+            themeColorHex = preset.accentHex, backgroundColorHex = preset.backgroundHex,
+            cardColorHex = preset.cardHex, themeFontStyle = preset.fontStyle,
+            themeFontColorHex = preset.fontColorHex, activeThemePresetId = preset.id
+        )
+        prefs.edit()
+            .putString("theme_color", preset.accentHex).putString("bg_color", preset.backgroundHex)
+            .putString("card_color", preset.cardHex).putString("theme_font", preset.fontStyle)
+            .putString("theme_font_color", preset.fontColorHex).putString("active_preset_id", preset.id)
+            .apply()
+    }
+
+    fun deletePreset(id: String) {
+        val updated = _uiState.value.savedThemePresets.filter { it.id != id }
+        _uiState.value = _uiState.value.copy(
+            savedThemePresets = updated,
+            activeThemePresetId = if (_uiState.value.activeThemePresetId == id) null else _uiState.value.activeThemePresetId
+        )
+        savePresetsToPrefs(updated)
+        if (_uiState.value.activeThemePresetId == null) prefs.edit().remove("active_preset_id").apply()
+    }
+
+    private fun loadSavedPresets(): List<SavedThemePreset> {
+        val json = prefs.getString("theme_presets_json", null) ?: return emptyList()
+        return try { gson.fromJson(json, object : TypeToken<List<SavedThemePreset>>() {}.type) ?: emptyList() } catch (_: Exception) { emptyList() }
+    }
+    private fun savePresetsToPrefs(list: List<SavedThemePreset>) { prefs.edit().putString("theme_presets_json", gson.toJson(list)).apply() }
+
+    fun setBufferSize(size: String) { _uiState.value = _uiState.value.copy(bufferSize = size); prefs.edit().putString("buffer_size", size).apply() }
+    fun setStopOnHeadsetDisconnect(enabled: Boolean) { _uiState.value = _uiState.value.copy(stopOnHeadsetDisconnect = enabled); prefs.edit().putBoolean("stop_on_disconnect", enabled).apply() }
+    fun setHighQualityAudio(enabled: Boolean) { _uiState.value = _uiState.value.copy(highQualityAudio = enabled); prefs.edit().putBoolean("high_quality", enabled).apply() }
+    fun setAutoResumeOnBluetooth(enabled: Boolean) { _uiState.value = _uiState.value.copy(autoResumeOnBluetooth = enabled); prefs.edit().putBoolean("auto_resume_bt", enabled).apply() }
+    fun setSyncRoomCode(code: String) { _uiState.value = _uiState.value.copy(syncRoomCode = code); prefs.edit().putString("sync_room", code).apply() }
+    fun generateSyncRoomCode() { val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; setSyncRoomCode("RADIO-" + (1..4).map { chars.random() }.joinToString("")) }
+
     fun reorderStations(fromIndex: Int, toIndex: Int) {
         if (fromIndex == toIndex) return
         val cur = _stations.value.toMutableList()
         if (fromIndex in cur.indices && toIndex in cur.indices) {
-            cur.add(toIndex, cur.removeAt(fromIndex))
-            _stations.value = cur
-            saveStationsToPrefs(cur)
+            cur.add(toIndex, cur.removeAt(fromIndex)); _stations.value = cur; saveStationsToPrefs(cur)
         }
     }
     fun reorderGenres(fromIndex: Int, toIndex: Int) {
         if (fromIndex == toIndex) return
         val cur = _genres.value.toMutableList()
         if (fromIndex in cur.indices && toIndex in cur.indices) {
-            cur.add(toIndex, cur.removeAt(fromIndex))
-            _genres.value = cur
-            saveGenresToPrefs(cur)
+            cur.add(toIndex, cur.removeAt(fromIndex)); _genres.value = cur; saveGenresToPrefs(cur)
         }
     }
 
@@ -587,42 +506,24 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         val imported: List<Station> = gson.fromJson(jsonStr, object : TypeToken<List<Station>>() {}.type)
         if (imported.isNotEmpty()) {
             val merged = (_stations.value + imported).distinctBy { it.id }
-            _stations.value = merged
-            saveStationsToPrefs(merged)
-            true
+            _stations.value = merged; saveStationsToPrefs(merged); true
         } else false
     } catch (_: Exception) { false }
 
-    fun restoreDefaultStations() {
-        _stations.value = DefaultStations.STATIONS
-        saveStationsToPrefs(DefaultStations.STATIONS)
-    }
-
-    fun setAutoResumeOnBluetooth(enabled: Boolean) { _uiState.value = _uiState.value.copy(autoResumeOnBluetooth = enabled); prefs.edit().putBoolean("auto_resume_bt", enabled).apply() }
-    fun setSyncRoomCode(code: String) { _uiState.value = _uiState.value.copy(syncRoomCode = code); prefs.edit().putString("sync_room", code).apply() }
-
-    fun generateSyncRoomCode() {
-        val chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-        val code = "RADIO-" + (1..4).map { chars.random() }.joinToString("")
-        setSyncRoomCode(code)
-    }
+    fun restoreDefaultStations() { _stations.value = DefaultStations.STATIONS; saveStationsToPrefs(DefaultStations.STATIONS) }
 
     fun testAlarmInSeconds(seconds: Int = 5) {
         val ctx = getApplication<Application>()
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val target = _uiState.value.alarmStationId ?: _stations.value.firstOrNull()?.id
-        val i = Intent(ctx, AlarmReceiver::class.java).apply {
-            action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
-            putExtra("station_id", target)
-        }
+        val i = Intent(ctx, AlarmReceiver::class.java).apply { action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"; putExtra("station_id", target) }
         val pi = PendingIntent.getBroadcast(ctx, 1002, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val time = System.currentTimeMillis() + seconds * 1000L
         try {
-            val show = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            val show = PendingIntent.getActivity(ctx, 0, Intent(ctx, com.aetherwave.radio.MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             am.setAlarmClock(AlarmManager.AlarmClockInfo(time, show), pi)
         } catch (_: Exception) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pi)
-            else am.setExact(AlarmManager.RTC_WAKEUP, time, pi)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pi) else am.setExact(AlarmManager.RTC_WAKEUP, time, pi)
         }
     }
 
@@ -631,10 +532,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("alarm_enabled", enabled).putInt("alarm_hour", hour).putInt("alarm_minute", minute).putString("alarm_station_id", stationId).apply()
         val ctx = getApplication<Application>()
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val i = Intent(ctx, AlarmReceiver::class.java).apply {
-            action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
-            putExtra("station_id", stationId)
-        }
+        val i = Intent(ctx, AlarmReceiver::class.java).apply { action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"; putExtra("station_id", stationId) }
         val pi = PendingIntent.getBroadcast(ctx, 1001, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         if (enabled) {
             val cal = Calendar.getInstance().apply {
@@ -642,94 +540,49 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                 if (before(Calendar.getInstance())) add(Calendar.DAY_OF_YEAR, 1)
             }
             try {
-                val show = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+                val show = PendingIntent.getActivity(ctx, 0, Intent(ctx, com.aetherwave.radio.MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                 am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, show), pi)
             } catch (_: Exception) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
-                else am.setExact(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi) else am.setExact(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
             }
         } else am.cancel(pi)
     }
 
-    fun addGenre(name: String) {
-        val t = name.trim()
-        if (t.isNotBlank() && !_genres.value.contains(t)) {
-            _genres.value = _genres.value + t
-            saveGenresToPrefs(_genres.value)
-        }
-    }
-    fun deleteGenre(name: String) {
-        _genres.value = _genres.value.filter { it != name }
-        saveGenresToPrefs(_genres.value)
-        if (_uiState.value.selectedGroup == name) setSelectedGroup("All")
-    }
-    fun deleteSelectedGenres() {
-        val del = _uiState.value.selectedGenresForDeletion
-        _genres.value = _genres.value.filter { !del.contains(it) }
-        saveGenresToPrefs(_genres.value)
-        if (del.contains(_uiState.value.selectedGroup)) setSelectedGroup("All")
-        _uiState.value = _uiState.value.copy(selectedGenresForDeletion = emptySet(), isGenreSelectMode = false)
-    }
-    fun toggleGenreSelectMode() {
-        _uiState.value = _uiState.value.copy(isGenreSelectMode = !_uiState.value.isGenreSelectMode, selectedGenresForDeletion = emptySet())
-    }
-    fun toggleGenreArrangeMode() {
-        _uiState.value = _uiState.value.copy(isGenreArrangeMode = !_uiState.value.isGenreArrangeMode)
-    }
-    fun toggleGenreSelection(genre: String) {
-        val cur = _uiState.value.selectedGenresForDeletion.toMutableSet()
-        if (cur.contains(genre)) cur.remove(genre) else cur.add(genre)
-        _uiState.value = _uiState.value.copy(selectedGenresForDeletion = cur)
-    }
+    fun addGenre(name: String) { val t = name.trim(); if (t.isNotBlank() && !_genres.value.contains(t)) { _genres.value = _genres.value + t; saveGenresToPrefs(_genres.value) } }
+    fun deleteGenre(name: String) { _genres.value = _genres.value.filter { it != name }; saveGenresToPrefs(_genres.value); if (_uiState.value.selectedGroup == name) setSelectedGroup("All") }
+    fun deleteSelectedGenres() { val del = _uiState.value.selectedGenresForDeletion; _genres.value = _genres.value.filter { !del.contains(it) }; saveGenresToPrefs(_genres.value); if (del.contains(_uiState.value.selectedGroup)) setSelectedGroup("All"); _uiState.value = _uiState.value.copy(selectedGenresForDeletion = emptySet(), isGenreSelectMode = false) }
+    fun toggleGenreSelectMode() { _uiState.value = _uiState.value.copy(isGenreSelectMode = !_uiState.value.isGenreSelectMode, selectedGenresForDeletion = emptySet()) }
+    fun toggleGenreArrangeMode() { _uiState.value = _uiState.value.copy(isGenreArrangeMode = !_uiState.value.isGenreArrangeMode) }
+    fun toggleGenreSelection(genre: String) { val cur = _uiState.value.selectedGenresForDeletion.toMutableSet(); if (cur.contains(genre)) cur.remove(genre) else cur.add(genre); _uiState.value = _uiState.value.copy(selectedGenresForDeletion = cur) }
     fun moveGenre(genre: String, direction: String) {
-        val list = _genres.value.toMutableList()
-        val idx = list.indexOf(genre)
-        if (idx == -1) return
-        if (direction == "up" && idx > 0) { list.removeAt(idx); list.add(idx - 1, genre) }
-        else if (direction == "down" && idx < list.size - 1) { list.removeAt(idx); list.add(idx + 1, genre) }
-        _genres.value = list
-        saveGenresToPrefs(list)
+        val list = _genres.value.toMutableList(); val idx = list.indexOf(genre); if (idx == -1) return
+        if (direction == "up" && idx > 0) { list.removeAt(idx); list.add(idx - 1, genre) } else if (direction == "down" && idx < list.size - 1) { list.removeAt(idx); list.add(idx + 1, genre) }
+        _genres.value = list; saveGenresToPrefs(list)
     }
 
     fun saveStation(station: Station) {
-        val cur = _stations.value.toMutableList()
-        val idx = cur.indexOfFirst { it.id == station.id }
+        val cur = _stations.value.toMutableList(); val idx = cur.indexOfFirst { it.id == station.id }
         if (idx != -1) cur[idx] = station else cur.add(0, station)
-        _stations.value = cur
-        saveStationsToPrefs(cur)
+        _stations.value = cur; saveStationsToPrefs(cur)
         if (_uiState.value.currentStation?.id == station.id) _uiState.value = _uiState.value.copy(currentStation = station)
     }
     fun deleteStation(stationId: String) {
-        val updated = _stations.value.filter { it.id != stationId }
-        _stations.value = updated
-        saveStationsToPrefs(updated)
-        if (_uiState.value.currentStation?.id == stationId) {
-            pausePlayback()
-            _uiState.value = _uiState.value.copy(currentStation = updated.firstOrNull())
-        }
+        val updated = _stations.value.filter { it.id != stationId }; _stations.value = updated; saveStationsToPrefs(updated)
+        if (_uiState.value.currentStation?.id == stationId) { pausePlayback(); _uiState.value = _uiState.value.copy(currentStation = updated.firstOrNull()) }
     }
     fun moveStation(stationId: String, direction: String) {
-        val cur = _stations.value.toMutableList()
-        val idx = cur.indexOfFirst { it.id == stationId }
-        if (idx == -1) return
-        if (direction == "up" && idx > 0) { val it2 = cur.removeAt(idx); cur.add(idx - 1, it2) }
-        else if (direction == "down" && idx < cur.size - 1) { val it2 = cur.removeAt(idx); cur.add(idx + 1, it2) }
-        _stations.value = cur
-        saveStationsToPrefs(cur)
+        val cur = _stations.value.toMutableList(); val idx = cur.indexOfFirst { it.id == stationId }; if (idx == -1) return
+        if (direction == "up" && idx > 0) { val it2 = cur.removeAt(idx); cur.add(idx - 1, it2) } else if (direction == "down" && idx < cur.size - 1) { val it2 = cur.removeAt(idx); cur.add(idx + 1, it2) }
+        _stations.value = cur; saveStationsToPrefs(cur)
     }
 
     fun queryRadioBrowserSuggestions(keyword: String) {
-        val t = keyword.trim()
-        if (t.length < 2) { _searchSuggestions.value = emptyList(); return }
-        scrapeJob?.cancel()
-        scrapeJob = viewModelScope.launch(Dispatchers.IO) {
-            delay(280)
-            _isScraping.value = true
+        val t = keyword.trim(); if (t.length < 2) { _searchSuggestions.value = emptyList(); return }
+        scrapeJob?.cancel(); scrapeJob = viewModelScope.launch(Dispatchers.IO) {
+            delay(280); _isScraping.value = true
             try {
-                val enc = URLEncoder.encode(t, "UTF-8")
-                val url = URL("https://de1.api.radio-browser.info/json/stations/byname/$enc?limit=10&order=votes&reverse=true")
-                val conn = url.openConnection() as HttpURLConnection
-                conn.connectTimeout = 5000; conn.readTimeout = 5000
+                val enc = URLEncoder.encode(t, "UTF-8"); val url = URL("https://de1.api.radio-browser.info/json/stations/byname/$enc?limit=10&order=votes&reverse=true")
+                val conn = url.openConnection() as HttpURLConnection; conn.connectTimeout = 5000; conn.readTimeout = 5000
                 conn.setRequestProperty("User-Agent", "AetherWaveRadioApp/1.0")
                 if (conn.responseCode == 200) {
                     val txt = conn.inputStream.bufferedReader().use { it.readText() }
@@ -737,21 +590,12 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
                     _searchSuggestions.value = raw.mapNotNull { item ->
                         val n = item["name"] as? String ?: return@mapNotNull null
                         val u = (item["url_resolved"] as? String) ?: (item["url"] as? String) ?: return@mapNotNull null
-                        ScrapedRadioStation(
-                            n.trim(), u.trim(),
-                            (item["favicon"] as? String)?.takeIf { it.isNotBlank() },
-                            (item["tags"] as? String)?.takeIf { it.isNotBlank() },
-                            (item["country"] as? String)?.takeIf { it.isNotBlank() },
-                            (item["codec"] as? String)?.takeIf { it.isNotBlank() },
-                            (item["bitrate"] as? Number)?.toInt()?.takeIf { it > 0 }
-                        )
+                        ScrapedRadioStation(n.trim(), u.trim(), (item["favicon"] as? String)?.takeIf { it.isNotBlank() }, (item["tags"] as? String)?.takeIf { it.isNotBlank() }, (item["country"] as? String)?.takeIf { it.isNotBlank() }, (item["codec"] as? String)?.takeIf { it.isNotBlank() }, (item["bitrate"] as? Number)?.toInt()?.takeIf { it > 0 })
                     }
                 }
-            } catch (e: Exception) { Log.e("RadioViewModel", "scrape error: ${e.message}") }
-            finally { _isScraping.value = false }
+            } catch (e: Exception) {} finally { _isScraping.value = false }
         }
     }
-
     fun clearSuggestions() { _searchSuggestions.value = emptyList() }
 
     private fun loadSavedStations(): List<Station> {
@@ -768,8 +612,6 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
     private fun saveGenresToPrefs(list: List<String>) { prefs.edit().putString("custom_genres_json", gson.toJson(list)).apply() }
 
     override fun onCleared() {
-        super.onCleared()
-        fftJob?.cancel()
-        controllerFuture?.let { MediaController.releaseFuture(it) }
+        super.onCleared(); fftJob?.cancel(); controllerFuture?.let { MediaController.releaseFuture(it) }
     }
 }
