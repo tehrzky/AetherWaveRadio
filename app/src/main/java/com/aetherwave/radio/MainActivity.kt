@@ -613,7 +613,7 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
                         ) {
                             itemsIndexed(stations, key = { _, s -> s.id }) { _, station ->
                                 val isCurrent = uiState.currentStation?.id == station.id
-                                StationGridCardClean(
+                                StationGridCardV1(
                                     station = station,
                                     isCurrent = isCurrent,
                                     isPlaying = isCurrent && uiState.isPlaying,
@@ -744,7 +744,7 @@ fun RadioAppScreen(viewModel: RadioViewModel) {
 // Clean Grid Card: Hold to Edit, no ugly buttons
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun StationGridCardClean(
+fun StationGridCardV1(
     station: Station,
     isCurrent: Boolean,
     isPlaying: Boolean,
@@ -809,33 +809,26 @@ fun StationGridCardClean(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                station.name,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0x12FFFFFF))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    station.group,
-                    fontSize = 10.sp,
-                    color = Color.Gray,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+            Spacer(modifier = Modifier.height(4.dp))
+            
+            // Bottom Row: Genre on Left, Country on Right
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(Color(0x12FFFFFF)).padding(horizontal = 6.dp, vertical = 2.dp)) {
+                    Text(station.group, fontSize = 10.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                val countryCode = when (station.country?.lowercase()) {
+                    "usa", "united states" -> "US"
+                    "philippines" -> "PH"
+                    "japan" -> "JP"
+                    "switzerland" -> "CH"
+                    "uk", "united kingdom" -> "UK"
+                    "spain" -> "ES"
+                    "global", "international" -> "🌐"
+                    else -> station.country?.take(3)?.uppercase() ?: "MP3"
+                }
+                Box(modifier = Modifier.clip(RoundedCornerShape(6.dp)).border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp)).padding(horizontal = 4.dp, vertical = 1.dp)) {
+                    Text(countryCode, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+                }
             }
         }
     }
@@ -1116,13 +1109,15 @@ fun ExpandedMasterDeckDialog(
     onOpenAlarm: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val deckAccent = parseHexColor(uiState.deckAccentHex)
+    val deckBg = parseHexColor(uiState.deckBackgroundHex)
 
     Dialog(
         onDismissRequest = onClose,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
-            color = Color(0xFF0B101D),
+            color = deckBg,
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -1134,7 +1129,7 @@ fun ExpandedMasterDeckDialog(
                         .offset(y = 10.dp)
                         .background(
                             Brush.radialGradient(
-                                colors = listOf(accentColor.copy(alpha = 0.28f), Color.Transparent)
+                                colors = listOf(deckAccent.copy(alpha = 0.28f), Color.Transparent)
                             )
                         )
                 )
@@ -1320,7 +1315,10 @@ fun ExpandedMasterDeckDialog(
                                     style = uiState.spectrumStyle,
                                     sensitivity = uiState.spectrumSensitivity,
                                     colorScheme = uiState.spectrumColorScheme,
-                                    speed = uiState.spectrumSpeed
+                                    speed = uiState.spectrumSpeed,
+                                    barHeightScale = uiState.spectrumBarHeightScale,
+                                    fftBars = uiState.fftBars,
+                                    useRealFft = uiState.useRealFft,
                                 )
                             }
                         }
@@ -1460,7 +1458,10 @@ fun CustomizableAudioSpectrumCanvas(
     style: String,
     sensitivity: Float,
     colorScheme: String,
-    speed: String
+    speed: String,
+    barHeightScale: Float,
+    fftBars: FloatArray,
+    useRealFft: Boolean
 ) {
     val speedDuration = when (speed) {
         "Smooth" -> 22000
@@ -1470,11 +1471,8 @@ fun CustomizableAudioSpectrumCanvas(
 
     val infiniteTransition = rememberInfiniteTransition(label = "spec_anim")
     val phase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 62.83f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = speedDuration, easing = LinearEasing)
-        ),
+        initialValue = 0f, targetValue = 62.83f,
+        animationSpec = infiniteRepeatable(animation = tween(durationMillis = speedDuration, easing = LinearEasing)),
         label = "phase"
     )
 
@@ -1502,62 +1500,52 @@ fun CustomizableAudioSpectrumCanvas(
             else -> accentColor.copy(alpha = 0.5f)
         }
 
-        val gradient = Brush.verticalGradient(
-            colors = listOf(primaryGradColor, secondaryGradColor, Color(0xFF090D16))
-        )
+        val gradient = Brush.verticalGradient(colors = listOf(primaryGradColor, secondaryGradColor, Color(0xFF090D16)))
 
         for (i in 0 until barCount) {
             val h = if (isPlaying) {
-                val t = phase
-                val harmonic1 = sin(t * 1.9 + i * 0.24) * 0.35 + 0.35
-                val harmonic2 = cos(t * 2.8 - i * 0.42) * 0.25 + 0.25
-                val harmonic3 = sin(t * 0.72 + i * 0.6) * 0.20 + 0.20
-                val harmonic4 = cos(t * 3.5 + i * 0.15) * 0.10 + 0.10
-
-                val acousticWeight = when {
-                    i < 10 -> 1.0f + (sin(t * 2.2 + i) * 0.18f).toFloat() // Bass
-                    i in 10..30 -> 0.85f + (cos(t * 1.5 + i) * 0.16f).toFloat() // Mids
-                    else -> 0.68f + (sin(t * 3.1 + i) * 0.22f).toFloat() // Treble
+                val rawValue = if (useRealFft && i < fftBars.size) {
+                    // REAL FFT
+                    fftBars[i]
+                } else {
+                    // SMOOTH FALLBACK WAVE
+                    val t = phase
+                    val wave1 = sin(t * 1.5 + i * 0.15) * 0.5 + 0.5
+                    val wave2 = sin(t * 2.3 - i * 0.25) * 0.3 + 0.3
+                    val wave3 = cos(t * 0.9 + i * 0.4) * 0.2 + 0.2
+                    ((wave1 + wave2 + wave3) / 3f).toFloat()
                 }
-
-                val normalized = ((harmonic1 + harmonic2 + harmonic3 + harmonic4) * acousticWeight * sensitivity).toFloat()
+                
+                // Apply Sensitivity & Bar Height Scale
+                val normalized = (rawValue * sensitivity * barHeightScale).coerceIn(0f, 1f)
                 (normalized * (size.height - 4f)).coerceIn(4f, size.height)
             } else {
-                3f
+                4f
             }
 
             val x = i * (barWidth + spacing)
 
             when (style) {
                 "Mirrored" -> {
-                    // Center mirrored waves
                     val halfH = h / 2f
                     val centerY = size.height / 2f
                     drawRoundRect(
-                        brush = gradient,
-                        topLeft = Offset(x, centerY - halfH),
-                        size = Size(barWidth, halfH * 2f),
-                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                        brush = gradient, topLeft = Offset(x, centerY - halfH),
+                        size = Size(barWidth, halfH * 2f), cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                     )
                 }
                 "Columns" -> {
-                    // Thick segmented columns
                     val y = size.height - h
                     drawRoundRect(
-                        brush = gradient,
-                        topLeft = Offset(x, y),
-                        size = Size(barWidth, h),
-                        cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                        brush = gradient, topLeft = Offset(x, y),
+                        size = Size(barWidth, h), cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                     )
                 }
                 else -> {
-                    // Standard bars
                     val y = size.height - h
                     drawRoundRect(
-                        brush = gradient,
-                        topLeft = Offset(x, y),
-                        size = Size(barWidth, h),
-                        cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                        brush = gradient, topLeft = Offset(x, y),
+                        size = Size(barWidth, h), cornerRadius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
                     )
                 }
             }
@@ -2685,7 +2673,10 @@ fun SpectrumSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         style = uiState.spectrumStyle,
                         sensitivity = uiState.spectrumSensitivity,
                         colorScheme = uiState.spectrumColorScheme,
-                        speed = uiState.spectrumSpeed
+                        speed = uiState.spectrumSpeed,
+                        barHeightScale = uiState.spectrumBarHeightScale,
+                        fftBars = uiState.fftBars,
+                        useRealFft = uiState.useRealFft,
                     )
                 }
             }
@@ -2722,6 +2713,19 @@ fun SpectrumSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 value = uiState.spectrumHeight.toFloat(),
                 onValueChange = { viewModel.setSpectrumSettings(height = it.toInt()) },
                 valueRange = 50f..140f,
+                colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
+            )
+        }
+
+        // Bar Height Scale (bar max height, not box height)
+        Column {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Bar Max Height (${(uiState.spectrumBarHeightScale * 100).toInt()}%)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+            Slider(
+                value = uiState.spectrumBarHeightScale,
+                onValueChange = { viewModel.setSpectrumSettings(barHeightScale = it) },
+                valueRange = 0.3f..1.0f,
                 colors = SliderDefaults.colors(thumbColor = accentColor, activeTrackColor = accentColor)
             )
         }
