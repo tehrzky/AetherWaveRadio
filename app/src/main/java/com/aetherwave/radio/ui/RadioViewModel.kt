@@ -51,7 +51,8 @@ data class SavedThemePreset(
     val accentHex: String,
     val backgroundHex: String,
     val cardHex: String,
-    val fontStyle: String = "sans"
+    val fontStyle: String = "sans",
+    val fontColorHex: String = "auto"
 )
 
 enum class SettingsSubPage {
@@ -89,6 +90,7 @@ data class RadioUiState(
     val backgroundColorHex: String = "#090D16",
     val cardColorHex: String = "#111726",
     val themeFontStyle: String = "sans",       // NEW
+    val themeFontColorHex: String = "auto",    // NEW — "auto" or "#RRGGBB"
     val themeMode: String = "dark",
     val isMonetEnabled: Boolean = false,
     val isMuted: Boolean = false,
@@ -160,6 +162,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             backgroundColorHex = prefs.getString("bg_color", "#090D16") ?: "#090D16",
             cardColorHex = prefs.getString("card_color", "#111726") ?: "#111726",
             themeFontStyle = prefs.getString("theme_font", "sans") ?: "sans",
+            themeFontColorHex = prefs.getString("theme_font_color", "auto") ?: "auto",
             themeMode = prefs.getString("theme_mode", "dark") ?: "dark",
             isMonetEnabled = prefs.getBoolean("monet_enabled", false),
             selectedGroup = prefs.getString("selected_genre_group", "All") ?: "All",
@@ -229,6 +232,11 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putString("theme_font", style).apply()
     }
 
+    fun setFontColor(hex: String) {
+        _uiState.value = _uiState.value.copy(themeFontColorHex = hex, activeThemePresetId = null)
+        prefs.edit().putString("theme_font_color", hex).remove("active_preset_id").apply()
+    }
+
     fun saveCurrentAsPreset(name: String) {
         val trimmed = name.trim()
         if (trimmed.isBlank()) return
@@ -239,7 +247,8 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             accentHex = s.themeColorHex,
             backgroundHex = s.backgroundColorHex,
             cardHex = s.cardColorHex,
-            fontStyle = s.themeFontStyle
+            fontStyle = s.themeFontStyle,
+            fontColorHex = s.themeFontColorHex
         )
         val updated = s.savedThemePresets + newPreset
         _uiState.value = s.copy(
@@ -257,6 +266,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             backgroundColorHex = preset.backgroundHex,
             cardColorHex = preset.cardHex,
             themeFontStyle = preset.fontStyle,
+            themeFontColorHex = preset.fontColorHex,
             activeThemePresetId = preset.id
         )
         prefs.edit()
@@ -264,6 +274,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             .putString("bg_color", preset.backgroundHex)
             .putString("card_color", preset.cardHex)
             .putString("theme_font", preset.fontStyle)
+            .putString("theme_font_color", preset.fontColorHex)
             .putString("active_preset_id", preset.id)
             .apply()
     }
