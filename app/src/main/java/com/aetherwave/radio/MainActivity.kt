@@ -3730,7 +3730,7 @@ fun SleepTimerDialog(
 
                     Button(
                         onClick = {
-                            viewModel.sleepTimerManager.startTimer(selectedMins)
+                            viewModel.sleepTimerManager.startTimer(selectedMins, fadeOut = true)
                             onClose()
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
