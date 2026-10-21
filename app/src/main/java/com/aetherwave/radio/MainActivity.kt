@@ -705,9 +705,9 @@ fun RadioAppScreen(
             onNext = { viewModel.playNext() },
             onPrevious = { viewModel.playPrevious() },
             onToggleFavorite = { viewModel.toggleFavorite(uiState.currentStation!!.id) },
-            onOpenSleep = { showSleepDialog = true },
-            onOpenEqualizer = { showEqDialog = true },
-            onOpenAlarm = { showAlarmDialog = true }
+            onOpenSleep = onOpenSleep,
+            onOpenEqualizer = onOpenEq,
+            onOpenAlarm = onOpenAlarm
         )
     }
 
