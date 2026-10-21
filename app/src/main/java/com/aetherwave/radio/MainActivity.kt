@@ -752,7 +752,7 @@ fun StationGridCardV1(
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .height(210.dp) // Taller card for big artwork
+            .height(220.dp) // Taller card for big artwork
             .border(
                 width = if (isCurrent) 1.5.dp else 1.dp,
                 color = if (isCurrent) accentColor else Color(0x14FFFFFF),
@@ -817,33 +817,33 @@ fun StationGridCardV1(
 
             Spacer(modifier = Modifier.weight(1f)) // Pushes the bottom row to the very bottom
 
-            // BOTTOM ROW: Genre on Left, Country on Right
+                        // BOTTOM ROW: Genre (no background) on left, Country (grey bg) on right
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(24.dp), // Fixed height so text has room
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
+                // Genre Text (No background)
+                Text(
+                    station.group,
+                    fontSize = 11.sp,
+                    color = Color.Gray,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                     modifier = Modifier
-                        .height(22.dp) // Force fixed height
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0x12FFFFFF))
-                        .padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center // Force vertical & horizontal center
-                ) {
-                    Text(
-                        station.group,
-                        fontSize = 10.sp,
-                        color = Color.Gray,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
-                    )
-                }
+                        .weight(1f)
+                        .align(Alignment.CenterVertically) // Explicit center
+                )
 
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Country Tag (Grey background + border)
                 val countryCode = remember(station.country) {
                     val c = station.country?.trim()?.lowercase() ?: ""
                     when {
-                        c.contains("philippines") || c.contains("pilipinas") || c == "ph" -> "PH"
+                        c.contains("philippines") || c.contains("pilipinas") || c == "ph" || c == "the" -> "PH"
                         c.contains("united states") || c.contains("usa") || c == "us" -> "US"
                         c.contains("japan") || c == "jp" -> "JP"
                         c.contains("switzerland") || c == "ch" -> "CH"
@@ -856,15 +856,21 @@ fun StationGridCardV1(
                     }
                 }
 
-                if (countryCode.isNotEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text(countryCode, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, fontFamily = FontFamily.Monospace)
-                    }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0x12FFFFFF))
+                        .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp), // Padding handles vertical centering
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        countryCode,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.LightGray,
+                        fontFamily = FontFamily.Monospace
+                    )
                 }
             }
         }
@@ -955,25 +961,24 @@ fun StationListCardRightPlay(
                     overflow = TextOverflow.Ellipsis
                 )
                 Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .height(20.dp) // Force fixed height
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color(0x12FFFFFF))
-                            .padding(horizontal = 6.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(station.group, fontSize = 10.sp, color = Color.Gray, textAlign = TextAlign.Center, maxLines = 1)
-                    }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Genre Text (No background, centered)
+                    Text(
+                        station.group,
+                        fontSize = 11.sp,
+                        color = Color.Gray,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
                     
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     
-                    // ADD THE SMART PARSER HERE
+                    // Country Tag (Grey background)
                     val countryCode = remember(station.country) {
                         val c = station.country?.trim()?.lowercase() ?: ""
                         when {
-                            c.contains("philippines") || c.contains("pilipinas") || c == "ph" -> "PH"
+                            c.contains("philippines") || c.contains("pilipinas") || c == "ph" || c == "the" -> "PH"
                             c.contains("united states") || c.contains("usa") || c == "us" -> "US"
                             c.contains("japan") || c == "jp" -> "JP"
                             c.contains("switzerland") || c == "ch" -> "CH"
@@ -985,7 +990,15 @@ fun StationListCardRightPlay(
                             else -> c.take(3).uppercase()
                         }
                     }
-                    Text(countryCode, fontSize = 10.sp, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color(0x12FFFFFF))
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(countryCode, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, fontFamily = FontFamily.Monospace)
+                    }
                 }
             }
 
@@ -1216,7 +1229,7 @@ fun ExpandedMasterDeckDialog(
                     }
 
                     // ---------- INFO ----------
-                    Box(modifier = Modifier.fillMaxWidth().height(76.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFF162138)).padding(horizontal = 10.dp, vertical = 3.dp)) {
                                 Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, textAlign = TextAlign.Center)
@@ -1298,38 +1311,59 @@ fun ExpandedMasterDeckDialog(
                         }
                     }
 
-                    // ---------- BOTTOM PILL (32.dp full capsule) ----------
+                                        // ---------- BOTTOM SEGMENTED PILL (PixelPlayer Style: 3 tiles inside stadium) ----------
                     Row(
-                        modifier = Modifier.fillMaxWidth().height(64.dp)
-                            .clip(RoundedCornerShape(32.dp)).background(pillBg)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .clip(RoundedCornerShape(32.dp))          // Outer capsule
+                            .background(pillBg)
                             .border(1.dp, pillBorder, RoundedCornerShape(32.dp))
-                            .padding(6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .padding(6.dp),                            // Gap between outer pill and inner tiles
+                        horizontalArrangement = Arrangement.spacedBy(6.dp), // Gap between tiles
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Tile 1: Sleep
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
-                                .background(deckBg.copy(alpha = 0.5f)).clickable { onOpenSleep() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.45f))
+                                .clickable { onOpenSleep() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(22.dp))
                         }
+
+                        // Tile 2: Alarm
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
-                                .background(deckBg.copy(alpha = 0.5f)).clickable { onOpenAlarm() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.45f))
+                                .clickable { onOpenAlarm() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = Color.LightGray, modifier = Modifier.size(24.dp))
+                            Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = Color.LightGray, modifier = Modifier.size(22.dp))
                         }
+
+                        // Tile 3: Favorite
                         Box(
-                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
-                                .background(deckBg.copy(alpha = 0.5f)).clickable { onToggleFavorite() },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.45f))
+                                .clickable { onToggleFavorite() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 if (station.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = "Favorite",
                                 tint = if (station.isFavorite) Color(0xFFEC4899) else Color.LightGray,
-                                modifier = Modifier.size(24.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                     }
