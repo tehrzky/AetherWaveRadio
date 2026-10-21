@@ -1237,7 +1237,7 @@ fun ExpandedMasterDeckDialog(
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 station.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
-                                color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                             )
                             Text(
