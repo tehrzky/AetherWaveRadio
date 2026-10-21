@@ -1229,7 +1229,7 @@ fun ExpandedMasterDeckDialog(
                     }
 
                     // ---------- INFO ----------
-                    Box(modifier = Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxWidth().height(110.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFF162138)).padding(horizontal = 10.dp, vertical = 3.dp)) {
                                 Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, textAlign = TextAlign.Center)
@@ -1328,7 +1328,7 @@ fun ExpandedMasterDeckDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(26.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(deckBg.copy(alpha = 0.45f))
                                 .clickable { onOpenSleep() },
                             contentAlignment = Alignment.Center
@@ -1341,7 +1341,7 @@ fun ExpandedMasterDeckDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(26.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(deckBg.copy(alpha = 0.45f))
                                 .clickable { onOpenAlarm() },
                             contentAlignment = Alignment.Center
@@ -1354,7 +1354,7 @@ fun ExpandedMasterDeckDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(26.dp))
+                                .clip(RoundedCornerShape(20.dp))
                                 .background(deckBg.copy(alpha = 0.45f))
                                 .clickable { onToggleFavorite() },
                             contentAlignment = Alignment.Center
