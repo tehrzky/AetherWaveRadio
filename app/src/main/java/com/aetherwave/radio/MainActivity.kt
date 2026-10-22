@@ -2,6 +2,7 @@ package com.aetherwave.radio
 
 import android.net.Uri
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -543,7 +544,6 @@ fun RadioAppScreen(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .animateItem()
                                     .zIndex(if (abs(dragYOffset) > 1f) 1f else 0f)
                                     .graphicsLayer { translationY = dragYOffset }
                                     .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(16.dp))
@@ -2944,7 +2944,6 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .animateItem()
                     .zIndex(if (abs(genreDrag) > 1f) 1f else 0f)
                     .graphicsLayer { translationY = genreDrag }
                     .clickable(enabled = uiState.isGenreSelectMode) {
