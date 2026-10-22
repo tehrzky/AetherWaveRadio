@@ -2229,7 +2229,7 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 }
 
                 // ============= PRESETS TAB =============
-                3 -> Column((verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                3 -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Quick Presets", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
