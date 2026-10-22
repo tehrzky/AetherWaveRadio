@@ -551,7 +551,12 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             }
         } else am.cancel(pi)
     }
-
+    fun renameGenre(old: String, new: String) {
+        val t = new.trim(); if (t.isBlank() || t == old || _genres.value.contains(t)) return
+        _genres.value = _genres.value.map { if (it == old) t else it }; saveGenresToPrefs(_genres.value)
+        _stations.value = _stations.value.map { if (it.group == old) it.copy(group = t) else it }; saveStationsToPrefs(_stations.value)
+        if (_uiState.value.selectedGroup == old) setSelectedGroup(t)
+    }
     fun addGenre(name: String) { val t = name.trim(); if (t.isNotBlank() && !_genres.value.contains(t)) { _genres.value = _genres.value + t; saveGenresToPrefs(_genres.value) } }
     fun deleteGenre(name: String) { _genres.value = _genres.value.filter { it != name }; saveGenresToPrefs(_genres.value); if (_uiState.value.selectedGroup == name) setSelectedGroup("All") }
     fun deleteSelectedGenres() { val del = _uiState.value.selectedGenresForDeletion; _genres.value = _genres.value.filter { !del.contains(it) }; saveGenresToPrefs(_genres.value); if (del.contains(_uiState.value.selectedGroup)) setSelectedGroup("All"); _uiState.value = _uiState.value.copy(selectedGenresForDeletion = emptySet(), isGenreSelectMode = false) }
