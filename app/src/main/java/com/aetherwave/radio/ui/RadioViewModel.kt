@@ -42,6 +42,14 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.Calendar
 
+data class SavedAlarm(
+    val id: String,
+    val hour24: Int,
+    val minute: Int,
+    val stationId: String?,
+    val enabled: Boolean = true
+)
+
 data class SavedThemePreset(
     val id: String,
     val name: String,
@@ -114,7 +122,9 @@ data class RadioUiState(
     val fftBars: FloatArray = FloatArray(64),
     val useRealFft: Boolean = false,
     val savedThemePresets: List<SavedThemePreset> = emptyList(),
-    val activeThemePresetId: String? = null
+    val activeThemePresetId: String? = null,
+    val savedAlarms: List<SavedAlarm> = emptyList()
+    
 )
 
 class RadioViewModel(application: Application) : AndroidViewModel(application) {
@@ -176,7 +186,8 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             autoResumeOnBluetooth = prefs.getBoolean("auto_resume_bt", false),
             highQualityAudio = prefs.getBoolean("high_quality", true),
             savedThemePresets = loadSavedPresets(),
-            activeThemePresetId = prefs.getString("active_preset_id", null)
+            activeThemePresetId = prefs.getString("active_preset_id", null),
+            savedAlarms = loadSavedAlarms()
         )
     )
     val uiState: StateFlow<RadioUiState> = _uiState.asStateFlow()
@@ -558,26 +569,123 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setAlarm(enabled: Boolean, hour: Int, minute: Int, stationId: String?) {
-        _uiState.value = _uiState.value.copy(alarmEnabled = enabled, alarmHour = hour, alarmMinute = minute, alarmStationId = stationId)
-        prefs.edit().putBoolean("alarm_enabled", enabled).putInt("alarm_hour", hour).putInt("alarm_minute", minute).putString("alarm_station_id", stationId).apply()
+        // ─── SAVED ALARMS (up to 3) ────────────────────────────────────
+
+    private fun loadSavedAlarms(): List<SavedAlarm> {
+        val json = prefs.getString("saved_alarms_json", null) ?: return emptyList()
+        return try {
+            gson.fromJson(json, object : TypeToken<List<SavedAlarm>>() {}.type) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    private fun saveAlarmsToPrefs(list: List<SavedAlarm>) {
+        prefs.edit().putString("saved_alarms_json", gson.toJson(list)).apply()
+    }
+
+    fun saveAlarm(hour24: Int, minute: Int, stationId: String?) {
+        val current = _uiState.value.savedAlarms
+        if (current.size >= 3) return
+        val newAlarm = SavedAlarm(
+            id = "alarm_${System.currentTimeMillis()}",
+            hour24 = hour24,
+            minute = minute,
+            stationId = stationId,
+            enabled = true
+        )
+        val updated = current + newAlarm
+        _uiState.value = _uiState.value.copy(savedAlarms = updated)
+        saveAlarmsToPrefs(updated)
+        scheduleAlarm(newAlarm, requestCode = 1100 + updated.indexOf(newAlarm))
+    }
+
+    fun deleteSavedAlarm(id: String) {
+        val current = _uiState.value.savedAlarms
+        val target = current.firstOrNull { it.id == id } ?: return
+        val idx = current.indexOf(target)
+        cancelAlarm(target, requestCode = 1100 + idx)
+        val updated = current.filter { it.id != id }
+        _uiState.value = _uiState.value.copy(savedAlarms = updated)
+        saveAlarmsToPrefs(updated)
+    }
+
+    fun toggleSavedAlarm(id: String) {
+        val current = _uiState.value.savedAlarms
+        val updated = current.map { if (it.id == id) it.copy(enabled = !it.enabled) else it }
+        _uiState.value = _uiState.value.copy(savedAlarms = updated)
+        saveAlarmsToPrefs(updated)
+        val idx = updated.indexOfFirst { it.id == id }
+        val target = updated[idx]
+        if (target.enabled) scheduleAlarm(target, requestCode = 1100 + idx)
+        else cancelAlarm(target, requestCode = 1100 + idx)
+    }
+
+    fun testSavedAlarm(id: String) {
+        val alarm = _uiState.value.savedAlarms.firstOrNull { it.id == id } ?: return
         val ctx = getApplication<Application>()
         val am = ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val i = Intent(ctx, AlarmReceiver::class.java).apply { action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"; putExtra("station_id", stationId) }
-        val pi = PendingIntent.getBroadcast(ctx, 1001, i, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        if (enabled) {
-            val cal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, hour); set(Calendar.MINUTE, minute); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-                if (before(Calendar.getInstance())) add(Calendar.DAY_OF_YEAR, 1)
-            }
-            try {
-                val show = PendingIntent.getActivity(ctx, 0, Intent(ctx, com.aetherwave.radio.MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, show), pi)
-            } catch (_: Exception) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi) else am.setExact(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
-            }
-        } else am.cancel(pi)
+        val intent = Intent(ctx, AlarmReceiver::class.java).apply {
+            action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
+            putExtra("alarm_id", alarm.id)
+            putExtra("station_id", alarm.stationId)
+        }
+        val pi = PendingIntent.getBroadcast(
+            ctx, 2000, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val time = System.currentTimeMillis() + 5000L
+        try {
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(time, null), pi)
+        } catch (_: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, time, pi)
+            else am.setExact(AlarmManager.RTC_WAKEUP, time, pi)
+        }
     }
+
+    // ─── alarm scheduling primitives ───────────────────────────────
+
+    private fun scheduleAlarm(alarm: SavedAlarm, requestCode: Int) {
+        val ctx = getApplication<Application>()
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intent = Intent(ctx, AlarmReceiver::class.java).apply {
+            action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
+            putExtra("alarm_id", alarm.id)
+            putExtra("station_id", alarm.stationId)
+        }
+        val pi = PendingIntent.getBroadcast(
+            ctx, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val cal = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, alarm.hour24)
+            set(Calendar.MINUTE, alarm.minute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (before(Calendar.getInstance())) add(Calendar.DAY_OF_YEAR, 1)
+        }
+        try {
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pi)
+        } catch (_: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+            else am.setExact(AlarmManager.RTC_WAKEUP, cal.timeInMillis, pi)
+        }
+    }
+
+    private fun cancelAlarm(alarm: SavedAlarm, requestCode: Int) {
+        val ctx = getApplication<Application>()
+        val am = ctx.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val intent = Intent(ctx, AlarmReceiver::class.java).apply {
+            action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
+            putExtra("alarm_id", alarm.id)
+        }
+        val pi = PendingIntent.getBroadcast(
+            ctx, requestCode, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        am.cancel(pi)
+    }
+    
     fun renameGenre(old: String, new: String) {
         val t = new.trim(); if (t.isBlank() || t == old || _genres.value.contains(t)) return
         _genres.value = _genres.value.map { if (it == old) t else it }; saveGenresToPrefs(_genres.value)
