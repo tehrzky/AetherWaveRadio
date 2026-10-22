@@ -250,7 +250,7 @@ class RadioPlaybackService : MediaSessionService() {
         if (intent?.action == ACTION_PLAY_ALARM) {
             val stationId = intent.getStringExtra("station_id")
             val prefs = getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
-            val json = prefs.getString("saved_stations_json", null)
+            val json = prefs.getString("stations_json", null)
             val stations: List<Station> = try {
                 if (!json.isNullOrEmpty())
                     Gson().fromJson(json, object : TypeToken<List<Station>>() {}.type)
