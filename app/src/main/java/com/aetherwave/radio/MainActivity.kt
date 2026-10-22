@@ -861,7 +861,9 @@ fun StationGridCardV1(
                         .clip(RoundedCornerShape(6.dp))
                         .background(Color(0x12FFFFFF))
                         .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(6.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp), // Padding handles vertical centering
+                        .height(20.dp)
+                        .wrapContentHeight(Alignment.CenterVertically)
+                        .padding(horizontal = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -1229,7 +1231,7 @@ fun ExpandedMasterDeckDialog(
                     }
 
                     // ---------- INFO ----------
-                    Box(modifier = Modifier.fillMaxWidth().height(110.dp), contentAlignment = Alignment.Center) {
+                    Box(modifier = Modifier.fillMaxWidth().height(122.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFF162138)).padding(horizontal = 10.dp, vertical = 3.dp)) {
                                 Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, textAlign = TextAlign.Center)
@@ -1243,7 +1245,7 @@ fun ExpandedMasterDeckDialog(
                             Text(
                                 if (!station.description.isNullOrEmpty()) station.description!!
                                 else listOfNotNull(station.codec, station.bitrate, station.country).joinToString(" • "),
-                                fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp, color = Color.Gray, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1328,7 +1330,7 @@ fun ExpandedMasterDeckDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(deckBg.copy(alpha = 0.45f))
                                 .clickable { onOpenSleep() },
                             contentAlignment = Alignment.Center
@@ -1341,7 +1343,7 @@ fun ExpandedMasterDeckDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(deckBg.copy(alpha = 0.45f))
                                 .clickable { onOpenAlarm() },
                             contentAlignment = Alignment.Center
@@ -1354,7 +1356,7 @@ fun ExpandedMasterDeckDialog(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(deckBg.copy(alpha = 0.45f))
                                 .clickable { onToggleFavorite() },
                             contentAlignment = Alignment.Center
@@ -2173,7 +2175,7 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono").forEach { (key, label) ->
+                            listOf("sans" to "Sans", "serif" to "Serif", "mono" to "Mono", "cursive" to "Cursive").forEach { (key, label) ->
                             val sel = editingFont == key
                             Box(
                                 modifier = Modifier
