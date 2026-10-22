@@ -42,6 +42,7 @@ class RadioPlaybackService : MediaSessionService() {
     private var androidVirtualizer: Virtualizer? = null
     private var androidVisualizer: Visualizer? = null
     private var currentAudioSessionId: Int = 0
+    private val fftSmoothed = FloatArray(FFT_BINS)
 
     companion object {
         const val CHANNEL_ID = "aetherwave_radio_channel"
@@ -205,21 +206,24 @@ class RadioPlaybackService : MediaSessionService() {
                         override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, rate: Int) {}
                         override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, rate: Int) {
                             fft ?: return
-                            // fft is [Re, Im, Re, Im, ...]; we reduce to FFT_BINS magnitude bins
-                            val bins = IntArray(FFT_BINS) { 0 }
-                            val step = (fft.size / 2) / FFT_BINS
-                            if (step < 1) return
-                            var max = 0
+                            val n = fft.size / 2
+                            val out = FloatArray(FFT_BINS)
                             for (i in 0 until FFT_BINS) {
-                                val re = fft[(i * step) * 2].toInt()
-                                val im = fft[(i * step) * 2 + 1].toInt()
-                                val mag = kotlin.math.sqrt((re * re + im * im).toFloat()).toInt()
-                                bins[i] = mag
-                                if (mag > max) max = mag
-                            }
-                            // Normalize 0..1
-                            val out = FloatArray(FFT_BINS) { i ->
-                                if (max == 0) 0f else (bins[i].toFloat() / max).coerceIn(0f, 1f)
+                                // log-spaced mapping so the high bands aren't dead
+                                val start = (Math.pow(i / FFT_BINS.toDouble(), 1.6) * (n - 1)).toInt()
+                                val end = (Math.pow((i + 1) / FFT_BINS.toDouble(), 1.6) * (n - 1)).toInt().coerceAtLeast(start + 1)
+                                var sum = 0f
+                                for (j in start until end.coerceAtMost(n)) {
+                                    val re = fft[j * 2].toInt(); val im = fft[j * 2 + 1].toInt()
+                                    sum += kotlin.math.sqrt((re * re + im * im).toFloat())
+                                }
+                                // fixed reference level instead of per-frame max → stable scale
+                                val norm = (sum / (end - start).coerceAtLeast(1) / 48f).coerceIn(0f, 1f)
+                                fftSmoothed[i] = if (norm > fftSmoothed[i])
+                                    fftSmoothed[i] + (norm - fftSmoothed[i]) * 0.6f   // fast attack
+                                else
+                                    fftSmoothed[i] * 0.86f                            // slow decay
+                                out[i] = fftSmoothed[i]
                             }
                             _fftState.value = out
                             _hasRealFft.value = out.any { it > 0.02f }
