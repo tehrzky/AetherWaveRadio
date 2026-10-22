@@ -348,6 +348,24 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
         if (next) { mediaController?.volume = 0f; _uiState.value = _uiState.value.copy(isMuted = true) }
         else { mediaController?.volume = originalVolumeBeforeFade; _uiState.value = _uiState.value.copy(isMuted = false) }
     }
+    
+    private fun pushEqToService() {
+        val s = _uiState.value
+        prefs.edit()
+            .putString("eq_bands_json", gson.toJson(s.eqBands.toFloatArray()))
+            .putFloat("bass_boost", s.bassBoost)
+            .putFloat("virtualizer", s.virtualizer)
+            .apply()
+        try {
+            val i = Intent(getApplication(), RadioPlaybackService::class.java).apply {
+                action = RadioPlaybackService.ACTION_SET_EQ
+                putExtra("eq_bands", s.eqBands.toFloatArray())
+                putExtra("bass_boost", s.bassBoost)
+                putExtra("virtualizer", s.virtualizer)
+            }
+            getApplication<Application>().startService(i)
+        } catch (_: Exception) { }
+    }
 
     fun setEqPreset(preset: String) {
         val bands = when (preset) {
@@ -360,6 +378,7 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             else -> listOf(0f, 0f, 0f, 0f, 0f)
         }
         _uiState.value = _uiState.value.copy(eqPreset = preset, eqBands = bands)
+        pushEqToService()
     }
 
     fun setEqBand(bandIndex: Int, value: Float) {
@@ -367,11 +386,19 @@ class RadioViewModel(application: Application) : AndroidViewModel(application) {
             val updated = _uiState.value.eqBands.toMutableList()
             updated[bandIndex] = value.coerceIn(-12f, 12f)
             _uiState.value = _uiState.value.copy(eqBands = updated, eqPreset = "Custom")
+            pushEqToService()
         }
     }
 
-    fun setBassBoost(level: Float) { _uiState.value = _uiState.value.copy(bassBoost = level.coerceIn(0f, 1f)) }
-    fun setVirtualizer(level: Float) { _uiState.value = _uiState.value.copy(virtualizer = level.coerceIn(0f, 1f)) }
+    fun setBassBoost(level: Float) {
+        _uiState.value = _uiState.value.copy(bassBoost = level.coerceIn(0f, 1f))
+        pushEqToService()
+    }
+
+    fun setVirtualizer(level: Float) {
+        _uiState.value = _uiState.value.copy(virtualizer = level.coerceIn(0f, 1f))
+        pushEqToService()
+    }
 
     fun toggleFavorite(stationId: String) {
         _stations.value = _stations.value.map { if (it.id == stationId) it.copy(isFavorite = !it.isFavorite) else it }
