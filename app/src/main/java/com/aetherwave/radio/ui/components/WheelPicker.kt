@@ -19,82 +19,73 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlin.math.abs
 
-/**
- * Infinite-loop carousel picker. Used for alarm hour/minute/AM-PM and
- * sleep timer hour/minute wheels.
- *
- * Internally the items list is tripled so scrolling past the ends wraps
- * to the start without a hitch. Reports back the ORIGINAL index (0..items.size-1).
- */
 @Composable
 fun WheelPicker(
     items: List<String>,
     selectedIndex: Int,
     onItemSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    accentColor: Color = MaterialTheme.colorScheme.primary
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    isCarousel: Boolean = true
 ) {
     if (items.isEmpty()) return
 
     val n = items.size
-    // Odd visible count keeps the center math clean.
-    val visibleCount = 5
-    val halfVisible = (visibleCount - 1) / 2 // 2
+    val visibleCount = 3 // 3 is the cleanest math for centering (1 above, 1 center, 1 below)
     val itemHeight = 44.dp
 
-    // Tripled items so scroll can loop indefinitely.
-    val tripled: List<String> = remember(items) {
-        buildList { repeat(3) { addAll(items) } }
-    }
-    // Start in the middle third, at the selected item.
-    val startOffset = remember { n * 1 } // one full copy in
+    val listState = rememberLazyListState()
 
-    val listState = rememberLazyListState(
-        initialFirstVisibleItemIndex = (startOffset + selectedIndex).coerceAtLeast(0)
-    )
+    // If not carousel, we just use the original items.
+    val listItems = if (isCarousel) remember(items) { List(3) { items }.flatten() } else items
+    val baseOffset = if (isCarousel) n else 0
+
+    // Initial scroll
+    LaunchedEffect(Unit) {
+        val initialIndex = baseOffset + selectedIndex
+        listState.scrollToItem(initialIndex)
+    }
+
     val fling = rememberSnapFlingBehavior(lazyListState = listState)
 
-    // Track last-known real index so we only fire onItemSelected when it changes.
-    var lastReal by remember { mutableIntStateOf(selectedIndex) }
-
-    // Listen to scroll: compute which real index is centered.
-    LaunchedEffect(listState, n) {
-        snapshotFlow { listState.firstVisibleItemIndex + halfVisible }
-            .map { globalIndex ->
-                // global index in the tripled list → real 0..n-1
-                ((globalIndex % n) + n) % n
-            }
+    // Handle scroll state changes
+    LaunchedEffect(listState, n, isCarousel) {
+        snapshotFlow { listState.firstVisibleItemIndex }
+            .map { visibleIndex -> visibleIndex + 1 } // Center item is +1 because visibleCount=3
             .distinctUntilChanged()
-            .collect { realIdx ->
-                if (realIdx != lastReal) {
-                    lastReal = realIdx
-                    onItemSelected(realIdx)
+            .collect { centerIndex ->
+                val realIndex = if (isCarousel) {
+                    val mod = centerIndex % n
+                    if (mod < 0) mod + n else mod
+                } else {
+                    centerIndex.coerceIn(0, n - 1)
                 }
+                onItemSelected(realIndex)
             }
     }
 
-    // When external selectedIndex changes, gently scroll to it.
-    LaunchedEffect(selectedIndex, n) {
-        if (selectedIndex == lastReal) return@LaunchedEffect
-        lastReal = selectedIndex
-        val target = startOffset + selectedIndex - halfVisible
-        val current = listState.firstVisibleItemIndex
-        // Pick the closest tripled occurrence so the jump feels natural.
-        val candidates = listOf(
-            selectedIndex - halfVisible,
-            n + selectedIndex - halfVisible,
-            2 * n + selectedIndex - halfVisible
-        )
-        val best = candidates.minByOrNull { kotlin.math.abs(it - current) } ?: target
-        listState.animateScrollToItem(best.coerceAtLeast(0))
+    // Handle external selectedIndex changes (e.g. from AM/PM toggle)
+    LaunchedEffect(selectedIndex) {
+        if (isCarousel) {
+            val currentCenter = listState.firstVisibleItemIndex + 1
+            val currentReal = (currentCenter % n + n) % n
+            if (currentReal != selectedIndex) {
+                // Find the closest tripled index
+                val targetBase = (currentCenter / n) * n
+                listState.animateScrollToItem(targetBase + selectedIndex)
+            }
+        } else {
+            listState.animateScrollToItem(selectedIndex)
+        }
     }
 
     Box(
         modifier = modifier.height(itemHeight * visibleCount),
         contentAlignment = Alignment.Center
     ) {
-        // Center band highlight
+        // Background highlight
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -106,14 +97,14 @@ fun WheelPicker(
         LazyColumn(
             state = listState,
             flingBehavior = fling,
-            contentPadding = PaddingValues(vertical = itemHeight * halfVisible),
+            contentPadding = PaddingValues(vertical = itemHeight), // 1 item height padding top & bottom
             modifier = Modifier.fillMaxSize()
         ) {
-            items(tripled.size) { i ->
-                val center = listState.firstVisibleItemIndex + halfVisible
-                val dist = kotlin.math.abs(i - center)
-                val realIdx = ((i % n) + n) % n
-                val isSelected = dist == 0 && realIdx == lastReal
+            items(listItems.size) { i ->
+                val center = listState.firstVisibleItemIndex + 1
+                val dist = abs(i - center)
+                val isSelected = dist == 0
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -121,14 +112,11 @@ fun WheelPicker(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        tripled[i],
+                        listItems[i],
                         fontSize = if (isSelected) 20.sp else 15.sp,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isSelected) MaterialTheme.colorScheme.onSurface
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.alpha(
-                            if (dist <= halfVisible) 1f - dist * 0.25f else 0f
-                        )
+                        color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.alpha(if (dist <= 1) 1f else 0f)
                     )
                 }
             }
