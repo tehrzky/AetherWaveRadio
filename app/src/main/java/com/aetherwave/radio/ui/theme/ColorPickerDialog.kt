@@ -41,6 +41,7 @@ import kotlin.math.sin
  *  - Live hex preview + recent colors
  */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ColorPickerDialog(
     title: String = "Pick Color",
     initialHex: String = "#F59E0B",
@@ -117,6 +118,35 @@ fun ColorPickerDialog(
                         )
                     }
 
+                    // ---- Quick preset swatches ----
+                    val presetColors = listOf(
+                        "#F59E0B", "#EF4444", "#EC4899", "#A855F7", "#6366F1",
+                        "#3B82F6", "#06B6D4", "#10B981", "#84CC16", "#F97316",
+                        "#FFFFFF", "#94A3B8", "#334155", "#111726", "#090D16", "#000000"
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        presetColors.forEach { hex ->
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .background(hexToColor(hex))
+                                    .border(
+                                        2.dp,
+                                        if (hex.equals(currentHex, ignoreCase = true)) Color.White else Color(0x33FFFFFF),
+                                        CircleShape
+                                    )
+                                    .clickableNoRipple {
+                                        val n = rgbToHsv(hexToColor(hex))
+                                        hue = n.h; sat = n.s; v = n.v
+                                    }
+                            )
+                        }
+                    }
                     // ---- Hex + preview ----
                     Row(
                         modifier = Modifier
