@@ -545,6 +545,7 @@ fun RadioAppScreen(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .height(72.dp)
                                     .zIndex(if (abs(dragYOffset) > 1f) 1f else 0f)
                                     .graphicsLayer { translationY = dragYOffset }
                                     .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(16.dp))
@@ -594,10 +595,10 @@ fun RadioAppScreen(
                                                         val currentIndex = stations.indexOfFirst { it.id == st.id }
                                                         if (dragYOffset > 100f && currentIndex in 0 until stations.size - 1) {
                                                             viewModel.reorderStations(currentIndex, currentIndex + 1)
-                                                            dragYOffset -= 200f
+                                                            dragYOffset -= 180f
                                                         } else if (dragYOffset < -100f && currentIndex > 0) {
                                                             viewModel.reorderStations(currentIndex, currentIndex - 1)
-                                                            dragYOffset += 200f
+                                                            dragYOffset += 180f
                                                         }
                                                     },
                                                     onDragEnd = { dragYOffset = 0f },
@@ -1141,8 +1142,15 @@ fun ExpandedMasterDeckDialog(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val deckBg = parseHexColor(uiState.deckBackgroundHex)
+    // Detect light/dark theme for deck
+    val isDeckLight = deckBg.luminance() > 0.5f
+    val deckTextColor = if (isDeckLight) Color(0xFF0F172A) else deckTextColor
+    val deckSubTextColor = if (isDeckLight) Color(0xFF475569) else deckSubTextColor
+    val deckPillBg = if (isDeckLight) Color(0xFFE2E8F0) else Color(0xFF1C2230)
+    val deckPlayBtnBg = if (isDeckLight) Color(0xFF0F172A) else deckTextColor
+    val deckPlayBtnIcon = if (isDeckLight) deckTextColor else deckBg
     val deckAccent = parseHexColor(uiState.deckAccentHex)
-    val pillBg = Color(0xFF1C2230)
+    val deckPillBg = Color(0xFF1C2230)
     val pillBorder = Color(0x15FFFFFF)
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -1263,7 +1271,7 @@ fun ExpandedMasterDeckDialog(
                     // ---------- SPECTRUM CARD (rounded card, floating labels) ----------
                     Card(
                         shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF070B14)),
+                        colors = CardDefaults.cardColors(containerColor = deckPillBg.copy(alpha = 0.5f)),
                         modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
                     ) {
                         Box(modifier = Modifier.fillMaxWidth().height(uiState.spectrumHeight.dp)) {
@@ -1305,7 +1313,7 @@ fun ExpandedMasterDeckDialog(
                             Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(36.dp))
                         }
                         Box(
-                            modifier = Modifier.size(80.dp).clip(CircleShape).background(Color.White).clickable { onPlayPause() },
+                            modifier = Modifier.size(80.dp).clip(CircleShape).background(deckPlayBtnBg).clickable { onPlayPause() },
                             contentAlignment = Alignment.Center
                         ) {
                             if (isLoading) {
@@ -1313,7 +1321,7 @@ fun ExpandedMasterDeckDialog(
                             } else {
                                 Icon(
                                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = null, tint = deckBg, modifier = Modifier.size(44.dp)
+                                    contentDescription = null, tint = deckPlayBtnIcon, modifier = Modifier.size(44.dp)
                                 )
                             }
                         }
@@ -2816,65 +2824,28 @@ fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
 }
 
 // 4. Genre Group Manager Subpage (Overhauled: Add, Arrange, Select all on one row, no tall wrapping!)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val uiState by viewModel.uiState.collectAsState()
     val genres by viewModel.genres.collectAsState()
+    var showAddDialog by remember { mutableStateOf(false) }
     var newGenreText by remember { mutableStateOf("") }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        // Description Card
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text("Genre & Category Manager", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                Text("Organize, reorder, or batch delete custom radio groups", fontSize = 11.sp, color = Color.Gray)
-            }
-        }
+    // Drag state
+    var genreDrag by remember { mutableFloatStateOf(0f) }
 
-        // UNIFIED ACTION ROW: Input + Add + Arrange + Select (No Wrapping!)
-        Card(
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Action buttons (Top)
             Row(
-                modifier = Modifier
-                    .padding(10.dp)
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = newGenreText,
-                    onValueChange = { newGenreText = it },
-                    placeholder = { Text("Genre...", fontSize = 12.sp) },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f)
-                )
-                Button(
-                    onClick = {
-                        if (newGenreText.isNotBlank()) {
-                            viewModel.addGenre(newGenreText.trim())
-                            newGenreText = ""
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
-                    modifier = Modifier.width(66.dp).height(38.dp)
-                ) {
-                    Text("+ Add", fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                }
                 Button(
                     onClick = { viewModel.toggleGenreArrangeMode() },
                     colors = ButtonDefaults.buttonColors(
@@ -2882,147 +2853,168 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         contentColor = if (uiState.isGenreArrangeMode) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
-                    modifier = Modifier.width(76.dp).height(38.dp)
+                    modifier = Modifier.weight(1f).height(44.dp)
                 ) {
-                    Icon(if (uiState.isGenreArrangeMode) Icons.Default.Check else Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(13.dp))
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(if (uiState.isGenreArrangeMode) "Done" else "Arrange", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Icon(if (uiState.isGenreArrangeMode) Icons.Default.Check else Icons.Default.SwapVert, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (uiState.isGenreArrangeMode) "Done" else "Arrange", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
                 Button(
                     onClick = { viewModel.toggleGenreSelectMode() },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (uiState.isGenreSelectMode) Color(0xFFEF4444) else MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = if (uiState.isGenreSelectMode) Color.White else MaterialTheme.colorScheme.onSurface
+                        containerColor = if (uiState.isGenreSelectMode) accentColor else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (uiState.isGenreSelectMode) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface
                     ),
                     shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
-                    modifier = Modifier.width(76.dp).height(38.dp)
+                    modifier = Modifier.weight(1f).height(44.dp)
                 ) {
-                    Icon(if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(13.dp))
-                    Spacer(modifier = Modifier.width(2.dp))
-                    Text(if (uiState.isGenreSelectMode) "Done" else "Select", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Icon(if (uiState.isGenreSelectMode) Icons.Default.Close else Icons.Default.Checklist, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (uiState.isGenreSelectMode) "Cancel" else "Select", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
             }
-        }
 
-        // Batch Delete Bar when in Select Mode
-        if (uiState.isGenreSelectMode && uiState.selectedGenresForDeletion.isNotEmpty()) {
-            Card(
-                shape = RoundedCornerShape(14.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444)),
-                modifier = Modifier.fillMaxWidth()
+            // Genres List
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "${uiState.selectedGenresForDeletion.size} genre(s) selected",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Button(
-                        onClick = { showDeleteConfirmDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color(0xFFEF4444)),
-                        shape = RoundedCornerShape(10.dp)
+                items(genres.size) { index ->
+                    val g = genres[index]
+                    val isSelected = uiState.selectedGenresForDeletion.contains(g)
+                    var localDrag by remember(g) { mutableFloatStateOf(0f) }
+
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isSelected) accentColor.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp) // Standard height
+                            .zIndex(if (abs(localDrag) > 1f) 1f else 0f)
+                            .graphicsLayer { translationY = localDrag }
+                            .clickable(enabled = uiState.isGenreSelectMode) {
+                                viewModel.toggleGenreSelection(g)
+                            }
                     ) {
-                        Text("Delete Selected", fontWeight = FontWeight.Bold)
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp).fillMaxSize(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(g, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+
+                            // Checkbox on the RIGHT side when in select mode
+                            if (uiState.isGenreSelectMode) {
+                                Checkbox(
+                                    checked = isSelected,
+                                    onCheckedChange = { viewModel.toggleGenreSelection(g) },
+                                    colors = CheckboxDefaults.colors(checkedColor = accentColor)
+                                )
+                            }
+
+                            // Drag handle
+                            if (uiState.isGenreArrangeMode) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(accentColor.copy(alpha = 0.1f))
+                                        .pointerInput(g) {
+                                            detectDragGestures(
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    localDrag += dragAmount.y
+                                                    val currentIndex = genres.indexOf(g)
+                                                    if (localDrag > 90f && currentIndex in 0 until genres.size - 1) {
+                                                        viewModel.reorderGenres(currentIndex, currentIndex + 1)
+                                                        localDrag -= 180f
+                                                    } else if (localDrag < -90f && currentIndex > 0) {
+                                                        viewModel.reorderGenres(currentIndex, currentIndex - 1)
+                                                        localDrag += 180f
+                                                    }
+                                                },
+                                                onDragEnd = { localDrag = 0f },
+                                                onDragCancel = { localDrag = 0f }
+                                            )
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.DragHandle, contentDescription = "Drag", tint = accentColor, modifier = Modifier.size(20.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
 
-        // Genres List
-        var genreDrag by remember { mutableFloatStateOf(0f) }
-        genres.forEachIndexed { index, g ->
-            val isSelected = uiState.selectedGenresForDeletion.contains(g)
-
-            Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .zIndex(if (abs(genreDrag) > 1f) 1f else 0f)
-                    .graphicsLayer { translationY = genreDrag }
-                    .clickable(enabled = uiState.isGenreSelectMode) {
-                        viewModel.toggleGenreSelection(g)
-                    }
+        // Floating Action Buttons
+        if (!uiState.isGenreSelectMode) {
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = accentColor,
+                contentColor = Color(0xFF090D16),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                Icon(Icons.Default.Add, contentDescription = "Add Genre")
+            }
+        } else if (uiState.selectedGenresForDeletion.isNotEmpty()) {
+            Row(
+                modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = { viewModel.toggleGenreSelectMode() }, // Cancel
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(56.dp)
                 ) {
-                    if (uiState.isGenreSelectMode) {
-                        Checkbox(
-                            checked = isSelected,
-                            onCheckedChange = { viewModel.toggleGenreSelection(g) },
-                            colors = CheckboxDefaults.colors(checkedColor = Color(0xFFEF4444))
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-
-                    Text(g, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-                    if (!uiState.isGenreArrangeMode && !uiState.isGenreSelectMode) {
-                        var showRename by remember(g) { mutableStateOf(false) }
-                        var renameText by remember(g) { mutableStateOf(g) }
-                        IconButton(onClick = { showRename = true }, modifier = Modifier.size(32.dp)) {
-                            Icon(Icons.Default.Edit, contentDescription = "Rename", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        }
-                        if (showRename) {
-                            AlertDialog(
-                                onDismissRequest = { showRename = false },
-                                title = { Text("Rename Genre") },
-                                text = { OutlinedTextField(value = renameText, onValueChange = { renameText = it }, singleLine = true) },
-                                confirmButton = { Button(onClick = { viewModel.renameGenre(g, renameText); showRename = false }, colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))) { Text("Save") } },
-                                dismissButton = { TextButton(onClick = { showRename = false }) { Text("Cancel") } }
-                            )
-                        }
-                    }
-
-                    if (uiState.isGenreArrangeMode) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(accentColor.copy(alpha = 0.15f))
-                                .pointerInput(g) {
-                                    detectDragGestures(
-                                        onDrag = { change, dragAmount ->
-                                            change.consume()
-                                            genreDrag += dragAmount.y
-                                            val currentIndex = genres.indexOf(g)
-                                            if (genreDrag > 90f && currentIndex in 0 until genres.size - 1) {
-                                                viewModel.reorderGenres(currentIndex, currentIndex + 1)
-                                                genreDrag -= 180f
-                                            } else if (genreDrag < -90f && currentIndex > 0) {
-                                                viewModel.reorderGenres(currentIndex, currentIndex - 1)
-                                                genreDrag += 180f
-                                            }
-                                        },
-                                        onDragEnd = { genreDrag = 0f },
-                                        onDragCancel = { genreDrag = 0f }
-                                    )
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                Icons.Default.DragHandle,
-                                contentDescription = "Drag to reorder genre",
-                                tint = accentColor,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
+                    Icon(Icons.Default.Close, contentDescription = "Cancel")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = { showDeleteConfirmDialog = true },
+                    containerColor = Color(0xFFEF4444),
+                    contentColor = Color.White
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Delete (${uiState.selectedGenresForDeletion.size})")
                 }
             }
         }
     }
 
+    // Add Dialog
+    if (showAddDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddDialog = false },
+            title = { Text("Add New Genre") },
+            text = {
+                OutlinedTextField(
+                    value = newGenreText,
+                    onValueChange = { newGenreText = it },
+                    label = { Text("Genre Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newGenreText.isNotBlank()) {
+                            viewModel.addGenre(newGenreText.trim())
+                            newGenreText = ""
+                            showAddDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))
+                ) { Text("Add") }
+            },
+            dismissButton = { TextButton(onClick = { showAddDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    // Delete Confirm Dialog
     if (showDeleteConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmDialog = false },
@@ -3035,15 +3027,9 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                         showDeleteConfirmDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444))
-                ) {
-                    Text("Delete")
-                }
+                ) { Text("Delete") }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                    Text("Cancel", color = Color.Gray)
-                }
-            }
+            dismissButton = { TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("Cancel") } }
         )
     }
 }
@@ -3055,7 +3041,6 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val uiState by viewModel.uiState.collectAsState()
     val stations by viewModel.stations.collectAsState()
 
-    // Wheel state for creating a new alarm
     var hour24 by remember { mutableIntStateOf(uiState.alarmHour) }
     var minute by remember { mutableIntStateOf(uiState.alarmMinute) }
     var selectedStationId by remember { mutableStateOf(uiState.alarmStationId ?: stations.firstOrNull()?.id) }
@@ -3082,55 +3067,43 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // ─── WHEELS AT TOP ───
-        Card(
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            modifier = Modifier.fillMaxWidth()
+        // Wheels
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                WheelPicker(
-                    items = (1..12).map { "%02d".format(it) },
-                    selectedIndex = hour12 - 1,
-                    onItemSelected = { updateAlarmTime(it + 1, minute, isAm) },
-                    accentColor = accentColor,
-                    modifier = Modifier.width(84.dp)
-                )
-                Text(
-                    ":",
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 6.dp)
-                )
-                WheelPicker(
-                    items = (0..59).map { "%02d".format(it) },
-                    selectedIndex = minute,
-                    onItemSelected = { updateAlarmTime(hour12, it, isAm) },
-                    accentColor = accentColor,
-                    modifier = Modifier.width(84.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                WheelPicker(
-                    items = listOf("AM", "PM"),
-                    selectedIndex = if (isAm) 0 else 1,
-                    onItemSelected = { updateAlarmTime(hour12, minute, it == 0) },
-                    accentColor = accentColor,
-                    modifier = Modifier.width(76.dp)
-                )
-            }
+            WheelPicker(
+                items = (1..12).map { "%02d".format(it) },
+                selectedIndex = hour12 - 1,
+                onItemSelected = { updateAlarmTime(it + 1, minute, isAm) },
+                accentColor = accentColor,
+                modifier = Modifier.width(72.dp)
+            )
+            Text(":", fontSize = 28.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 4.dp))
+            WheelPicker(
+                items = (0..59).map { "%02d".format(it) },
+                selectedIndex = minute,
+                onItemSelected = { updateAlarmTime(hour12, it, isAm) },
+                accentColor = accentColor,
+                modifier = Modifier.width(72.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            WheelPicker(
+                items = listOf("AM", "PM"),
+                selectedIndex = if (isAm) 0 else 1,
+                onItemSelected = { updateAlarmTime(hour12, minute, it == 0) },
+                accentColor = accentColor,
+                modifier = Modifier.width(64.dp),
+                isCarousel = false
+            )
         }
 
-        // ─── STATION SELECTOR ───
+        // Station selector
         Text("Wake-Up Station", fontSize = 13.sp, fontWeight = FontWeight.Bold)
         val currentSelectedSt = stations.firstOrNull { it.id == selectedStationId } ?: stations.firstOrNull()
         var showStationDropdown by remember { mutableStateOf(false) }
@@ -3140,21 +3113,10 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
             modifier = Modifier.fillMaxWidth().clickable { showStationDropdown = true }
         ) {
-            Row(
-                modifier = Modifier.padding(12.dp).fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black),
-                    contentAlignment = Alignment.Center
-                ) {
+            Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black), contentAlignment = Alignment.Center) {
                     if (!currentSelectedSt?.logoUrl.isNullOrEmpty()) {
-                        AsyncImage(
-                            model = currentSelectedSt?.logoUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                        AsyncImage(model = currentSelectedSt?.logoUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                     } else {
                         Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
                     }
@@ -3168,98 +3130,45 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
             }
             DropdownMenu(expanded = showStationDropdown, onDismissRequest = { showStationDropdown = false }) {
                 stations.forEach { st ->
-                    DropdownMenuItem(
-                        text = { Text(st.name, fontSize = 13.sp) },
-                        onClick = {
-                            selectedStationId = st.id
-                            showStationDropdown = false
-                        }
-                    )
+                    DropdownMenuItem(text = { Text(st.name, fontSize = 13.sp) }, onClick = { selectedStationId = st.id; showStationDropdown = false })
                 }
             }
         }
 
-        // ─── SAVE BUTTON ───
+        // Save Button
         val savedCount = uiState.savedAlarms.size
         val atMax = savedCount >= 3
         Button(
-            onClick = {
-                viewModel.saveAlarm(hour24, minute, selectedStationId)
-                Toast.makeText(context, "Alarm saved", Toast.LENGTH_SHORT).show()
-            },
+            onClick = { viewModel.saveAlarm(hour24, minute, selectedStationId); Toast.makeText(context, "Alarm saved", Toast.LENGTH_SHORT).show() },
             enabled = !atMax,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = accentColor,
-                contentColor = Color(0xFF090D16),
-                disabledContainerColor = Color(0x22FFFFFF),
-                disabledContentColor = Color(0x66FFFFFF)
-            ),
+            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth().height(48.dp)
         ) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                if (atMax) "Max 3 Alarms Reached" else "Save This Alarm",
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp
-            )
+            Text(if (atMax) "Max 3 Alarms" else "Save This Alarm", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
 
-        // ─── BATTERY FIX BUTTON ───
-        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
-        val alreadyExempt = powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+        // Battery Fix
+        val alreadyExempt = (context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager)?.isIgnoringBatteryOptimizations(context.packageName) == true
         OutlinedButton(
             onClick = {
-                if (alreadyExempt) {
-                    Toast.makeText(context, "Alarms already prioritized ✓", Toast.LENGTH_SHORT).show()
-                } else {
-                    try {
-                        context.startActivity(
-                            Intent(
-                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                android.net.Uri.parse("package:" + context.packageName)
-                            )
-                        )
-                    } catch (_: Exception) {
-                        Toast.makeText(context, "Open system settings to allow background for AetherWave", Toast.LENGTH_LONG).show()
-                    }
-                }
+                if (alreadyExempt) Toast.makeText(context, "Already prioritized ✓", Toast.LENGTH_SHORT).show()
+                else try { context.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + context.packageName))) } catch (_: Exception) {}
             },
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
+            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth().height(48.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
         ) {
             Icon(Icons.Default.BatterySaver, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text("Fix Alarm (if not firing)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
         }
-        Text(
-            "Only needed on some Samsung / Xiaomi phones",
-            fontSize = 11.sp,
-            color = Color.Gray,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center
-        )
 
-        // ─── SAVED ALARMS LIST ───
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            "Saved Alarms ($savedCount/3)",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-
+        // Saved List
+        Spacer(modifier = Modifier.height(8.dp))
+        Text("Saved Alarms ($savedCount/3)", fontSize = 14.sp, fontWeight = FontWeight.Bold)
         if (uiState.savedAlarms.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(MaterialTheme.colorScheme.surface).padding(24.dp), contentAlignment = Alignment.Center) {
                 Text("No alarms saved yet", fontSize = 12.sp, color = Color.Gray)
             }
         } else {
@@ -3268,46 +3177,17 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 val displayAmPm = if (alarm.hour24 < 12) "AM" else "PM"
                 val stationName = stations.firstOrNull { it.id == alarm.stationId }?.name ?: "No station"
                 Card(
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            viewModel.testSavedAlarm(alarm.id)
-                            Toast.makeText(context, "Test alarm in 5s — lock screen to test", Toast.LENGTH_LONG).show()
-                        }
+                    shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier.fillMaxWidth().height(72.dp).clickable { viewModel.testSavedAlarm(alarm.id); Toast.makeText(context, "Test in 5s", Toast.LENGTH_SHORT).show() }
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Row(modifier = Modifier.padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                String.format("%02d:%02d %s", displayHour, alarm.minute, displayAmPm),
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Text(String.format("%02d:%02d %s", displayHour, alarm.minute, displayAmPm), fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             Text(stationName, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
                         }
-                        Switch(
-                            checked = alarm.enabled,
-                            onCheckedChange = { viewModel.toggleSavedAlarm(alarm.id) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = accentColor,
-                                checkedTrackColor = accentColor.copy(alpha = 0.3f)
-                            )
-                        )
-                        IconButton(
-                            onClick = { viewModel.deleteSavedAlarm(alarm.id) },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete alarm",
-                                tint = Color(0xFFEF4444),
-                                modifier = Modifier.size(20.dp)
-                            )
+                        Switch(checked = alarm.enabled, onCheckedChange = { viewModel.toggleSavedAlarm(alarm.id) }, colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f)))
+                        IconButton(onClick = { viewModel.deleteSavedAlarm(alarm.id) }, modifier = Modifier.size(36.dp)) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(20.dp))
                         }
                     }
                 }
