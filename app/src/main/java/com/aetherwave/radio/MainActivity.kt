@@ -3370,12 +3370,30 @@ fun BluetoothSubPage(viewModel: RadioViewModel, accentColor: Color) {
 @Composable
 fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        uri?.let {
+            try {
+                context.contentResolver.openOutputStream(it)?.use { os -> os.write(viewModel.exportStationsJson().toByteArray()) }
+                Toast.makeText(context, "Backup saved!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) { Toast.makeText(context, "Save failed", Toast.LENGTH_SHORT).show() }
+        }
+    }
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            try {
+                val json = context.contentResolver.openInputStream(it)?.bufferedReader()?.use { r -> r.readText() } ?: ""
+                if (viewModel.importStationsJson(json)) Toast.makeText(context, "Stations restored!", Toast.LENGTH_SHORT).show()
+                else Toast.makeText(context, "Invalid backup file", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) { Toast.makeText(context, "Import failed", Toast.LENGTH_SHORT).show() }
+        }
+    }
     val stations by viewModel.stations.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
-    var showImportDialog by remember { mutableStateOf(false) }
-    var importText by remember { mutableStateOf("") }
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -3400,9 +3418,7 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 Text("Data Management", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 
                 Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C2230)).clickable {
-                    val json = viewModel.exportStationsJson()
-                    clipboardManager.setText(AnnotatedString(json))
-                    Toast.makeText(context, "Copied JSON to clipboard!", Toast.LENGTH_SHORT).show()
+                    exportLauncher.launch("aetherwave_backup.json")
                 }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(12.dp))
@@ -3410,7 +3426,7 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                 }
 
-                Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C2230)).clickable { showImportDialog = true }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(modifier = Modifier.fillMaxWidth().height(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF1C2230)).clickable { importLauncher.launch(arrayOf("application/json", "text/plain", "*/*")) }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.FileDownload, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(12.dp))
                     Text("Import Stations", fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f))
@@ -3438,15 +3454,6 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
             }
         }
 
-        if (showImportDialog) {
-            AlertDialog(
-                onDismissRequest = { showImportDialog = false },
-                title = { Text("Import JSON") },
-                text = { OutlinedTextField(value = importText, onValueChange = { importText = it }, placeholder = { Text("Paste JSON here...") }, modifier = Modifier.fillMaxWidth().height(140.dp)) },
-                confirmButton = { Button(onClick = { if (viewModel.importStationsJson(importText)) { showImportDialog = false; Toast.makeText(context, "Imported!", Toast.LENGTH_SHORT).show() } }) { Text("Import") } },
-                dismissButton = { TextButton(onClick = { showImportDialog = false }) { Text("Cancel") } }
-            )
-        }
         if (showRestoreConfirmDialog) {
             AlertDialog(
                 onDismissRequest = { showRestoreConfirmDialog = false },
