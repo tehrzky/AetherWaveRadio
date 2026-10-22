@@ -47,6 +47,7 @@ fun parseHexColor(hexString: String, fallback: Color = Color(0xFFF59E0B)): Color
 fun resolveFontFamily(style: String): FontFamily = when (style.lowercase()) {
     "serif" -> FontFamily.Serif
     "mono"  -> FontFamily.Monospace
+    "cursive" -> FontFamily.Cursive
     else    -> FontFamily.SansSerif
 }
 
