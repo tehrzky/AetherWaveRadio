@@ -3422,7 +3422,7 @@ fun CloudBackupSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 }.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("Export Stations (JSON)", fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f))
+                    Text("Export Stations", fontSize = 14.sp, color = Color.White, modifier = Modifier.weight(1f))
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                 }
 
