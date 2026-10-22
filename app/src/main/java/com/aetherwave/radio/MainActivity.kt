@@ -591,12 +591,12 @@ fun RadioAppScreen(
                                                         change.consume()
                                                         dragYOffset += dragAmount.y
                                                         val currentIndex = stations.indexOfFirst { it.id == st.id }
-                                                        if (dragYOffset > 40f && currentIndex in 0 until stations.size - 1) {
+                                                        if (dragYOffset > 100f && currentIndex in 0 until stations.size - 1) {
                                                             viewModel.reorderStations(currentIndex, currentIndex + 1)
-                                                            dragYOffset -= 76f
-                                                        } else if (dragYOffset < -40f && currentIndex > 0) {
+                                                            dragYOffset -= 200f
+                                                        } else if (dragYOffset < -100f && currentIndex > 0) {
                                                             viewModel.reorderStations(currentIndex, currentIndex - 1)
-                                                            dragYOffset += 76f
+                                                            dragYOffset += 200f
                                                         }
                                                     },
                                                     onDragEnd = { dragYOffset = 0f },
@@ -2995,12 +2995,12 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                                             change.consume()
                                             genreDrag += dragAmount.y
                                             val currentIndex = genres.indexOf(g)
-                                            if (genreDrag > 30f && currentIndex in 0 until genres.size - 1) {
+                                            if (genreDrag > 90f && currentIndex in 0 until genres.size - 1) {
                                                 viewModel.reorderGenres(currentIndex, currentIndex + 1)
-                                                genreDrag -= 68f
-                                            } else if (genreDrag < -30f && currentIndex > 0) {
+                                                genreDrag -= 180f
+                                            } else if (genreDrag < -90f && currentIndex > 0) {
                                                 viewModel.reorderGenres(currentIndex, currentIndex - 1)
-                                                genreDrag += 68f
+                                                genreDrag += 180f
                                             }
                                         },
                                         onDragEnd = { genreDrag = 0f },
@@ -3054,15 +3054,15 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
     val uiState by viewModel.uiState.collectAsState()
     val stations by viewModel.stations.collectAsState()
 
-    var enabled by remember { mutableStateOf(uiState.alarmEnabled) }
-    var hour24 by remember { mutableStateOf(uiState.alarmHour) }
-    var minute by remember { mutableStateOf(uiState.alarmMinute) }
+    // Wheel state for creating a new alarm
+    var hour24 by remember { mutableIntStateOf(uiState.alarmHour) }
+    var minute by remember { mutableIntStateOf(uiState.alarmMinute) }
     var selectedStationId by remember { mutableStateOf(uiState.alarmStationId ?: stations.firstOrNull()?.id) }
 
     var isAm by remember { mutableStateOf(hour24 < 12) }
     var hour12 by remember {
         val h = hour24 % 12
-        mutableStateOf(if (h == 0) 12 else h)
+        mutableIntStateOf(if (h == 0) 12 else h)
     }
 
     fun updateAlarmTime(h12: Int, min: Int, am: Boolean) {
@@ -3076,7 +3076,6 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
         minute = min
         hour12 = h12
         isAm = am
-        viewModel.setAlarm(enabled, h24, min, selectedStationId)
     }
 
     Column(
@@ -3085,260 +3084,231 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // ─── WHEELS AT TOP ───
         Card(
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Radio Alarm Clock", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                        Text("Survives background & screen-off via AlarmManager", fontSize = 11.sp, color = Color.Gray)
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WheelPicker(
+                    items = (1..12).map { "%02d".format(it) },
+                    selectedIndex = hour12 - 1,
+                    onItemSelected = { updateAlarmTime(it + 1, minute, isAm) },
+                    accentColor = accentColor,
+                    modifier = Modifier.width(84.dp)
+                )
+                Text(
+                    ":",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(horizontal = 6.dp)
+                )
+                WheelPicker(
+                    items = (0..59).map { "%02d".format(it) },
+                    selectedIndex = minute,
+                    onItemSelected = { updateAlarmTime(hour12, it, isAm) },
+                    accentColor = accentColor,
+                    modifier = Modifier.width(84.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                WheelPicker(
+                    items = listOf("AM", "PM"),
+                    selectedIndex = if (isAm) 0 else 1,
+                    onItemSelected = { updateAlarmTime(hour12, minute, it == 0) },
+                    accentColor = accentColor,
+                    modifier = Modifier.width(76.dp)
+                )
+            }
+        }
 
-                    Switch(
-                        checked = enabled,
-                        onCheckedChange = {
-                            enabled = it
-                            viewModel.setAlarm(it, hour24, minute, selectedStationId)
-                        },
-                        colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(alpha = 0.3f))
-                    )
-                }
+        // ─── STATION SELECTOR ───
+        Text("Wake-Up Station", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        val currentSelectedSt = stations.firstOrNull { it.id == selectedStationId } ?: stations.firstOrNull()
+        var showStationDropdown by remember { mutableStateOf(false) }
 
-                // Digital Clock Display with Direct Time Indicator
+        Card(
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            modifier = Modifier.fillMaxWidth().clickable { showStationDropdown = true }
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(Color(0xFF090D16))
-                        .padding(vertical = 18.dp, horizontal = 16.dp),
+                    modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(Color.Black),
                     contentAlignment = Alignment.Center
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Text(
-                                String.format("%02d:%02d", hour12, minute),
-                                fontSize = 48.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (enabled) accentColor else Color.Gray,
-                                fontFamily = FontFamily.Monospace
+                    if (!currentSelectedSt?.logoUrl.isNullOrEmpty()) {
+                        AsyncImage(
+                            model = currentSelectedSt?.logoUrl,
+                            contentDescription = null,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(currentSelectedSt?.name ?: "Select Station", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(currentSelectedSt?.group ?: "All", fontSize = 11.sp, color = Color.Gray, maxLines = 1)
+                }
+                Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = accentColor)
+            }
+            DropdownMenu(expanded = showStationDropdown, onDismissRequest = { showStationDropdown = false }) {
+                stations.forEach { st ->
+                    DropdownMenuItem(
+                        text = { Text(st.name, fontSize = 13.sp) },
+                        onClick = {
+                            selectedStationId = st.id
+                            showStationDropdown = false
+                        }
+                    )
+                }
+            }
+        }
+
+        // ─── SAVE BUTTON ───
+        val savedCount = uiState.savedAlarms.size
+        val atMax = savedCount >= 3
+        Button(
+            onClick = {
+                viewModel.saveAlarm(hour24, minute, selectedStationId)
+                Toast.makeText(context, "Alarm saved", Toast.LENGTH_SHORT).show()
+            },
+            enabled = !atMax,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = accentColor,
+                contentColor = Color(0xFF090D16),
+                disabledContainerColor = Color(0x22FFFFFF),
+                disabledContentColor = Color(0x66FFFFFF)
+            ),
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp)
+        ) {
+            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                if (atMax) "Max 3 Alarms Reached" else "Save This Alarm",
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+        }
+
+        // ─── BATTERY FIX BUTTON ───
+        val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+        val alreadyExempt = powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
+        OutlinedButton(
+            onClick = {
+                if (alreadyExempt) {
+                    Toast.makeText(context, "Alarms already prioritized ✓", Toast.LENGTH_SHORT).show()
+                } else {
+                    try {
+                        context.startActivity(
+                            Intent(
+                                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                android.net.Uri.parse("package:" + context.packageName)
                             )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            // AM / PM Toggle Pills
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (isAm) accentColor else Color(0x20FFFFFF))
-                                        .clickable { updateAlarmTime(hour12, minute, true) }
-                                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                                ) {
-                                    Text("AM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isAm) Color(0xFF090D16) else Color.White)
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (!isAm) accentColor else Color(0x20FFFFFF))
-                                        .clickable { updateAlarmTime(hour12, minute, false) }
-                                        .padding(horizontal = 10.dp, vertical = 5.dp)
-                                ) {
-                                    Text("PM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (!isAm) Color(0xFF090D16) else Color.White)
-                                }
-                            }
-                        }
-
-                        // Open System Android Clock Dial Button
-                        OutlinedButton(
-                            onClick = {
-                                TimePickerDialog(
-                                    context,
-                                    { _, selectedH24, selectedM ->
-                                        val am = selectedH24 < 12
-                                        val h = selectedH24 % 12
-                                        val h12 = if (h == 0) 12 else h
-                                        updateAlarmTime(h12, selectedM, am)
-                                    },
-                                    hour24,
-                                    minute,
-                                    false
-                                ).show()
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
-                        ) {
-                            Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(15.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Open Clock Dial", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
+                        )
+                    } catch (_: Exception) {
+                        Toast.makeText(context, "Open system settings to allow background for AetherWave", Toast.LENGTH_LONG).show()
                     }
                 }
+            },
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
+        ) {
+            Icon(Icons.Default.BatterySaver, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Fix Alarm (if not firing)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
+        Text(
+            "Only needed on some Samsung / Xiaomi phones",
+            fontSize = 11.sp,
+            color = Color.Gray,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center
+        )
 
-                // Quick Wake-Up Presets
-                Text("Quick Wake Presets", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf(
-                        Triple(6, 0, true) to "6:00 AM",
-                        Triple(6, 30, true) to "6:30 AM",
-                        Triple(7, 0, true) to "7:00 AM",
-                        Triple(7, 30, true) to "7:30 AM",
-                        Triple(8, 0, true) to "8:00 AM",
-                        Triple(8, 30, true) to "8:30 AM"
-                    ).forEach { (timeTuple, label) ->
-                        val (h, m, am) = timeTuple
-                        val isSel = hour12 == h && minute == m && isAm == am
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSel) accentColor else Color(0x15FFFFFF))
-                                .clickable { updateAlarmTime(h, m, am) }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
-                        }
-                    }
-                }
+        // ─── SAVED ALARMS LIST ───
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            "Saved Alarms ($savedCount/3)",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
 
-                // Scrollable wheel: hour / minute / AM-PM
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    WheelPicker(
-                        items = (1..12).map { "%02d".format(it) },
-                        selectedIndex = hour12 - 1,
-                        onItemSelected = { updateAlarmTime(it + 1, minute, isAm) },
-                        accentColor = accentColor,
-                        modifier = Modifier.width(84.dp)
-                    )
-                    Text(":", fontSize = 28.sp, fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 6.dp))
-                    WheelPicker(
-                        items = (0..59).map { "%02d".format(it) },
-                        selectedIndex = minute,
-                        onItemSelected = { updateAlarmTime(hour12, it, isAm) },
-                        accentColor = accentColor,
-                        modifier = Modifier.width(84.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    WheelPicker(
-                        items = listOf("AM", "PM"),
-                        selectedIndex = if (isAm) 0 else 1,
-                        onItemSelected = { updateAlarmTime(hour12, minute, it == 0) },
-                        accentColor = accentColor,
-                        modifier = Modifier.width(76.dp)
-                    )
-                }
-
-                // Station Selector Card
-                Text("Wake-Up Radio Broadcast Station", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-
-                val currentSelectedSt = stations.firstOrNull { it.id == selectedStationId } ?: stations.firstOrNull()
-                var showStationDropdown by remember { mutableStateOf(false) }
-
+        if (uiState.savedAlarms.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(24.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No alarms saved yet", fontSize = 12.sp, color = Color.Gray)
+            }
+        } else {
+            uiState.savedAlarms.forEach { alarm ->
+                val displayHour = if (alarm.hour24 == 0) 12 else if (alarm.hour24 > 12) alarm.hour24 - 12 else alarm.hour24
+                val displayAmPm = if (alarm.hour24 < 12) "AM" else "PM"
+                val stationName = stations.firstOrNull { it.id == alarm.stationId }?.name ?: "No station"
                 Card(
                     shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showStationDropdown = true }
+                        .clickable {
+                            viewModel.testSavedAlarm(alarm.id)
+                            Toast.makeText(context, "Test alarm in 5s — lock screen to test", Toast.LENGTH_LONG).show()
+                        }
                 ) {
                     Row(
-                        modifier = Modifier
-                            .padding(12.dp)
-                            .fillMaxWidth(),
+                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(40.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.Black),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (!currentSelectedSt?.logoUrl.isNullOrEmpty()) {
-                                AsyncImage(
-                                    model = currentSelectedSt?.logoUrl,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize()
-                                )
-                            } else {
-                                Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp))
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(currentSelectedSt?.name ?: "Select Station", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                            Text(currentSelectedSt?.group ?: "All", fontSize = 11.sp, color = Color.Gray, maxLines = 1)
+                            Text(
+                                String.format("%02d:%02d %s", displayHour, alarm.minute, displayAmPm),
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(stationName, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
                         }
-
-                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = accentColor)
-                    }
-
-                    DropdownMenu(
-                        expanded = showStationDropdown,
-                        onDismissRequest = { showStationDropdown = false }
-                    ) {
-                        stations.forEach { st ->
-                            DropdownMenuItem(
-                                text = { Text(st.name, fontSize = 13.sp) },
-                                onClick = {
-                                    selectedStationId = st.id
-                                    viewModel.setAlarm(enabled, hour24, minute, st.id)
-                                    showStationDropdown = false
-                                }
+                        Switch(
+                            checked = alarm.enabled,
+                            onCheckedChange = { viewModel.toggleSavedAlarm(alarm.id) },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = accentColor,
+                                checkedTrackColor = accentColor.copy(alpha = 0.3f)
+                            )
+                        )
+                        IconButton(
+                            onClick = { viewModel.deleteSavedAlarm(alarm.id) },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete alarm",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                }
-
-                // Survive Doze / sleep mode
-                OutlinedButton(
-                    onClick = {
-                        try {
-                            context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.packageName)))
-                        } catch (e: Exception) {
-                            Toast.makeText(context, "Please allow unrestricted battery for AetherWave in system settings", Toast.LENGTH_LONG).show()
-                        }
-                    },
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
-                ) {
-                    Icon(Icons.Default.BatterySaver, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Allow Background (Bypass Sleep Mode)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
-                
-                // Test Alarm in 5 Seconds Button
-                Button(
-                    onClick = {
-                        viewModel.testAlarmInSeconds(5)
-                        Toast.makeText(context, "Alarm scheduled in 5s! You can turn off the screen now to test.", Toast.LENGTH_LONG).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
-                    shape = RoundedCornerShape(14.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
-                ) {
-                    Icon(Icons.Default.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Test Alarm Now (5 Seconds)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                 }
             }
         }
