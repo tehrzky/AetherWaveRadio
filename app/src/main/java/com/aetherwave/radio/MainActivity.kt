@@ -1142,16 +1142,17 @@ fun ExpandedMasterDeckDialog(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val deckBg = parseHexColor(uiState.deckBackgroundHex)
-    // Detect light/dark theme for deck
-    val isDeckLight = deckBg.luminance() > 0.5f
-    val deckTextColor = if (isDeckLight) Color(0xFF0F172A) else deckTextColor
-    val deckSubTextColor = if (isDeckLight) Color(0xFF475569) else deckSubTextColor
-    val deckPillBg = if (isDeckLight) Color(0xFFE2E8F0) else Color(0xFF1C2230)
-    val deckPlayBtnBg = if (isDeckLight) Color(0xFF0F172A) else deckTextColor
-    val deckPlayBtnIcon = if (isDeckLight) deckTextColor else deckBg
     val deckAccent = parseHexColor(uiState.deckAccentHex)
-    val deckPillBg = Color(0xFF1C2230)
-    val pillBorder = Color(0x15FFFFFF)
+
+    // Light/Dark auto-detect for the deck
+    val isDeckLight = deckBg.luminance() > 0.5f
+    val deckTextColor = if (isDeckLight) Color(0xFF0F172A) else Color.White
+    val deckSubTextColor = if (isDeckLight) Color(0xFF475569) else Color.Gray
+    val deckPillBg = if (isDeckLight) Color(0xFFE2E8F0) else Color(0xFF1C2230)
+    val deckPillBorder = if (isDeckLight) Color(0x33000000) else Color(0x15FFFFFF)
+    val deckPlayBtnBg = if (isDeckLight) Color(0xFF0F172A) else Color.White
+    val deckPlayBtnIcon = if (isDeckLight) Color.White else deckBg
+    val deckSpectrumBg = if (isDeckLight) Color(0xFFF1F5F9) else Color(0xFF070B14)
 
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(color = deckBg, modifier = Modifier.fillMaxSize()) {
@@ -1164,8 +1165,8 @@ fun ExpandedMasterDeckDialog(
 
                 Column(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     // ---------- TOP BAR ----------
                     Row(
@@ -1173,36 +1174,33 @@ fun ExpandedMasterDeckDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Close pill
                         Box(
                             modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
-                                .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
+                                .background(deckPillBg).border(1.dp, deckPillBorder, RoundedCornerShape(16.dp))
                                 .clickable { onClose() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(28.dp))
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Close", tint = deckTextColor, modifier = Modifier.size(28.dp))
                         }
 
-                        Text("Now Playing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                        Text("Now Playing", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = deckTextColor)
 
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            // EQ pill
                             Box(
                                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
-                                    .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
+                                    .background(deckPillBg).border(1.dp, deckPillBorder, RoundedCornerShape(16.dp))
                                     .clickable { onOpenEqualizer() },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Tune, contentDescription = "EQ", tint = Color.LightGray, modifier = Modifier.size(22.dp))
+                                Icon(Icons.Default.Tune, contentDescription = "EQ", tint = deckTextColor, modifier = Modifier.size(22.dp))
                             }
-                            // Settings pill
                             Box(
                                 modifier = Modifier.size(46.dp).clip(RoundedCornerShape(16.dp))
-                                    .background(pillBg).border(1.dp, pillBorder, RoundedCornerShape(16.dp))
+                                    .background(deckPillBg).border(1.dp, deckPillBorder, RoundedCornerShape(16.dp))
                                     .clickable { viewModel.openSettingsPage(null, fromDeck = true) },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = Color.LightGray, modifier = Modifier.size(22.dp))
+                                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = deckTextColor, modifier = Modifier.size(22.dp))
                             }
                         }
                     }
@@ -1221,7 +1219,7 @@ fun ExpandedMasterDeckDialog(
                             Icon(Icons.Default.Radio, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
                         }
 
-                        // ON AIR BADGE — correctly INSIDE the album art Box
+                        // ON AIR BADGE
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopStart)
@@ -1250,32 +1248,31 @@ fun ExpandedMasterDeckDialog(
                     // ---------- INFO ----------
                     Box(modifier = Modifier.fillMaxWidth().height(122.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xFF162138)).padding(horizontal = 10.dp, vertical = 3.dp)) {
-                                Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray, textAlign = TextAlign.Center)
+                            Box(modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(deckPillBg).padding(horizontal = 10.dp, vertical = 3.dp)) {
+                                Text(station.group, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = deckTextColor, textAlign = TextAlign.Center)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 station.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
-                                color = Color.White, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                color = deckTextColor, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                             )
                             Text(
                                 if (!station.description.isNullOrEmpty()) station.description!!
                                 else listOfNotNull(station.codec, station.bitrate, station.country).joinToString(" • "),
-                                fontSize = 12.sp, color = Color.Gray, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                fontSize = 12.sp, color = deckSubTextColor, maxLines = 2, overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                             )
                         }
                     }
 
-                    // ---------- SPECTRUM CARD (rounded card, floating labels) ----------
+                    // ---------- SPECTRUM CARD ----------
                     Card(
                         shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = deckPillBg.copy(alpha = 0.5f)),
-                        modifier = Modifier.fillMaxWidth().border(1.dp, Color(0x18FFFFFF), RoundedCornerShape(18.dp))
+                        colors = CardDefaults.cardColors(containerColor = deckSpectrumBg),
+                        modifier = Modifier.fillMaxWidth().border(1.dp, deckPillBorder, RoundedCornerShape(18.dp))
                     ) {
                         Box(modifier = Modifier.fillMaxWidth().height(uiState.spectrumHeight.dp)) {
-                            // Bars fill the entire card
                             CustomizableAudioSpectrumCanvas(
                                 isPlaying = isPlaying,
                                 accentColor = deckAccent,
@@ -1288,20 +1285,18 @@ fun ExpandedMasterDeckDialog(
                                 useRealFft = uiState.useRealFft
                             )
 
-                            // Floating label top-left (doesn't take vertical space)
                             Row(
                                 modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(Icons.Default.Bolt, contentDescription = null, tint = deckAccent, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Audio Spectrum", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Text("Audio Spectrum", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = deckTextColor)
                             }
 
-                            // Floating style + percent top-right
                             Text(
                                 "${uiState.spectrumStyle.uppercase()} • ${(uiState.spectrumSensitivity * 100).toInt()}%",
-                                fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = Color.Gray,
+                                fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = deckSubTextColor,
                                 modifier = Modifier.align(Alignment.TopEnd).padding(10.dp)
                             )
                         }
@@ -1310,14 +1305,14 @@ fun ExpandedMasterDeckDialog(
                     // ---------- PLAYBACK CONTROLS ----------
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(32.dp)) {
                         IconButton(onClick = onPrevious, modifier = Modifier.size(56.dp)) {
-                            Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = Color.White, modifier = Modifier.size(36.dp))
+                            Icon(Icons.Default.SkipPrevious, contentDescription = "Prev", tint = deckTextColor, modifier = Modifier.size(36.dp))
                         }
                         Box(
                             modifier = Modifier.size(80.dp).clip(CircleShape).background(deckPlayBtnBg).clickable { onPlayPause() },
                             contentAlignment = Alignment.Center
                         ) {
                             if (isLoading) {
-                                CircularProgressIndicator(color = deckBg, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
+                                CircularProgressIndicator(color = deckPlayBtnIcon, strokeWidth = 3.dp, modifier = Modifier.size(32.dp))
                             } else {
                                 Icon(
                                     if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -1326,62 +1321,42 @@ fun ExpandedMasterDeckDialog(
                             }
                         }
                         IconButton(onClick = onNext, modifier = Modifier.size(56.dp)) {
-                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(36.dp))
+                            Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = deckTextColor, modifier = Modifier.size(36.dp))
                         }
                     }
 
-                                        // ---------- BOTTOM SEGMENTED PILL (PixelPlayer Style: 3 tiles inside stadium) ----------
+                    // ---------- BOTTOM SEGMENTED PILL ----------
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(64.dp)
-                            .clip(RoundedCornerShape(32.dp))          // Outer capsule
-                            .background(pillBg)
-                            .border(1.dp, pillBorder, RoundedCornerShape(32.dp))
-                            .padding(6.dp),                            // Gap between outer pill and inner tiles
-                        horizontalArrangement = Arrangement.spacedBy(6.dp), // Gap between tiles
+                        modifier = Modifier.fillMaxWidth().height(64.dp)
+                            .clip(RoundedCornerShape(32.dp)).background(deckPillBg)
+                            .border(1.dp, deckPillBorder, RoundedCornerShape(32.dp))
+                            .padding(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Tile 1: Sleep
                         Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(deckBg.copy(alpha = 0.45f))
-                                .clickable { onOpenSleep() },
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.45f)).clickable { onOpenSleep() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = Color.LightGray, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.Bedtime, contentDescription = "Sleep", tint = deckTextColor, modifier = Modifier.size(22.dp))
                         }
-
-                        // Tile 2: Alarm
                         Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(deckBg.copy(alpha = 0.45f))
-                                .clickable { onOpenAlarm() },
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.45f)).clickable { onOpenAlarm() },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = Color.LightGray, modifier = Modifier.size(22.dp))
+                            Icon(Icons.Default.Alarm, contentDescription = "Alarm", tint = deckTextColor, modifier = Modifier.size(22.dp))
                         }
-
-                        // Tile 3: Favorite
                         Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxHeight()
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(deckBg.copy(alpha = 0.45f))
-                                .clickable { onToggleFavorite() },
+                            modifier = Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(26.dp))
+                                .background(deckBg.copy(alpha = 0.45f)).clickable { onToggleFavorite() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 if (station.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                                 contentDescription = "Favorite",
-                                tint = if (station.isFavorite) Color(0xFFEC4899) else Color.LightGray,
+                                tint = if (station.isFavorite) Color(0xFFEC4899) else deckTextColor,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
