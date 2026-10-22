@@ -9,6 +9,8 @@ import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 import com.aetherwave.radio.MainActivity
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import java.util.Calendar
 
 class AlarmReceiver : BroadcastReceiver() {
@@ -22,96 +24,116 @@ class AlarmReceiver : BroadcastReceiver() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "AetherWaveRadio:AlarmWakeLock"
         )
-        wakeLock?.acquire(60000L) // Hold wake lock for 60s to allow network connection and audio buffer
+        wakeLock?.acquire(60000L)
 
-        val prefs = context.getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
-
+        // --- BOOT COMPLETED: reschedule everything ---
         if (action == Intent.ACTION_BOOT_COMPLETED) {
-            val enabled = prefs.getBoolean("alarm_enabled", false)
-            if (enabled) {
-                val hour = prefs.getInt("alarm_hour", 7)
-                val minute = prefs.getInt("alarm_minute", 30)
-                val stationId = prefs.getString("alarm_station_id", null)
-                rescheduleAlarm(context, hour, minute, stationId)
+            val prefs = context.getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
+            val json = prefs.getString("saved_alarms_json", null) ?: return
+            val alarms: List<SavedAlarmData> = try {
+                Gson().fromJson(json, object : TypeToken<List<SavedAlarmData>>() {}.type) ?: emptyList()
+            } catch (_: Exception) { emptyList() }
+            alarms.forEachIndexed { index, alarm ->
+                if (alarm.enabled) rescheduleAlarm(context, alarm, 1100 + index)
             }
             return
         }
 
-        val stationId = intent.getStringExtra("station_id") ?: prefs.getString("alarm_station_id", null)
+        // --- NORMAL ALARM TRIGGER ---
+        val alarmId = intent.getStringExtra("alarm_id")
+        val stationIdFromIntent = intent.getStringExtra("station_id")
 
-        // 1. Start RadioPlaybackService as foreground service to start live radio music immediately
+        val prefs = context.getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
+        val json = prefs.getString("saved_alarms_json", null)
+        val alarms: List<SavedAlarmData> = try {
+            if (!json.isNullOrEmpty())
+                Gson().fromJson(json, object : TypeToken<List<SavedAlarmData>>() {}.type) ?: emptyList()
+            else emptyList()
+        } catch (_: Exception) { emptyList() }
+
+        // Find the alarm by id. If not found (e.g. deleted), skip.
+        val targetAlarm = if (alarmId != null) alarms.firstOrNull { it.id == alarmId } else null
+        if (alarmId != null && targetAlarm == null) {
+            Log.d("AlarmReceiver", "Alarm $alarmId not found — ignoring")
+            return
+        }
+        val stationId = targetAlarm?.stationId ?: stationIdFromIntent
+
+        // Start the radio service
         val serviceIntent = Intent(context, RadioPlaybackService::class.java).apply {
             this.action = RadioPlaybackService.ACTION_PLAY_ALARM
             putExtra("station_id", stationId)
         }
-
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(serviceIntent)
             } else {
                 context.startService(serviceIntent)
             }
-            Log.d("AlarmReceiver", "Successfully launched RadioPlaybackService for alarm")
         } catch (e: Exception) {
             Log.e("AlarmReceiver", "Failed to start RadioPlaybackService: ${e.message}", e)
         }
 
-        // 2. Launch MainActivity to foreground so user sees wake-up alarm interface
+        // Launch the app full-screen
         try {
             val activityIntent = Intent(context, MainActivity::class.java).apply {
                 this.action = "com.aetherwave.radio.ACTION_ALARM_FIRE"
                 putExtra("station_id", stationId)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
             }
             context.startActivity(activityIntent)
         } catch (e: Exception) {
             Log.w("AlarmReceiver", "Activity launch deferred: ${e.message}")
         }
+
+        // Reschedule this specific alarm for tomorrow (one-shot setAlarmClock
+        // needs re-arming for repeat).
+        targetAlarm?.let {
+            val idx = alarms.indexOf(it)
+            if (idx >= 0) rescheduleAlarm(context, it, 1100 + idx)
+        }
     }
 
-    private fun rescheduleAlarm(context: Context, hour: Int, minute: Int, stationId: String?) {
+    private fun rescheduleAlarm(context: Context, alarm: SavedAlarmData, requestCode: Int) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val alarmIntent = Intent(context, AlarmReceiver::class.java).apply {
             action = "com.aetherwave.radio.ACTION_ALARM_TRIGGER"
-            putExtra("station_id", stationId)
+            putExtra("alarm_id", alarm.id)
+            putExtra("station_id", alarm.stationId)
         }
         val pendingIntent = PendingIntent.getBroadcast(
-            context,
-            1001,
-            alarmIntent,
+            context, requestCode, alarmIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-
         val calendar = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
+            set(Calendar.HOUR_OF_DAY, alarm.hour24)
+            set(Calendar.MINUTE, alarm.minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            if (before(Calendar.getInstance())) {
-                add(Calendar.DAY_OF_YEAR, 1)
-            }
+            if (before(Calendar.getInstance())) add(Calendar.DAY_OF_YEAR, 1)
         }
-
         try {
-            val showIntent = PendingIntent.getActivity(
-                context,
-                0,
-                Intent(context, MainActivity::class.java),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            alarmManager.setAlarmClock(
+                AlarmManager.AlarmClockInfo(calendar.timeInMillis, null),
+                pendingIntent
             )
-            val clockInfo = AlarmManager.AlarmClockInfo(calendar.timeInMillis, showIntent)
-            alarmManager.setAlarmClock(clockInfo, pendingIntent)
-            Log.d("AlarmReceiver", "Rescheduled alarm after boot for: ${calendar.time}")
-        } catch (e: Exception) {
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
-                } else {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
-                }
-            } catch (ex: Exception) {
-                Log.e("AlarmReceiver", "Failed to reschedule alarm after boot", ex)
-            }
+        } catch (_: Exception) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
+            else
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, calendar.timeInMillis, pendingIntent)
         }
     }
+
+    // Mirror data class so we can deserialize SavedAlarm here without
+    // importing the ViewModel package (avoids a circular dependency).
+    private data class SavedAlarmData(
+        val id: String,
+        val hour24: Int,
+        val minute: Int,
+        val stationId: String? = null,
+        val enabled: Boolean = true
+    )
 }
