@@ -207,6 +207,16 @@ class RadioPlaybackService : MediaSessionService() {
                         override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, rate: Int) {}
                         override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, rate: Int) {
                             fft ?: return
+                            override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, rate: Int) {
+                            fft ?: return
+                            // Skip FFT processing when the screen is off — saves battery.
+                            val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                            if (pm?.isInteractive != true) {
+                                _fftState.value = FloatArray(FFT_BINS) { 0f }
+                                return
+                            }
+                            val n = fft.size / 2
+                            // ... rest of the FFT logic
                             val n = fft.size / 2
                             val out = FloatArray(FFT_BINS)
                             for (i in 0 until FFT_BINS) {
