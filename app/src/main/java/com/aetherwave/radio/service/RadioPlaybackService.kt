@@ -4,15 +4,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
-import android.app.PendingIntent
 import android.content.pm.ServiceInfo
-import android.media.AudioManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
 import android.media.audiofx.Visualizer
 import android.media.audiofx.Virtualizer
 import android.os.Build
 import android.util.Log
+import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -43,7 +42,6 @@ class RadioPlaybackService : MediaSessionService() {
     private var androidVirtualizer: Virtualizer? = null
     private var androidVisualizer: Visualizer? = null
     private var currentAudioSessionId: Int = 0
-    private val fftSmoothed = FloatArray(FFT_BINS)
 
     companion object {
         const val CHANNEL_ID = "aetherwave_radio_channel"
@@ -52,15 +50,13 @@ class RadioPlaybackService : MediaSessionService() {
         const val ACTION_SET_EQ = "com.aetherwave.radio.ACTION_SET_EQ"
         const val FOREGROUND_ID = 1001
 
-        // ---- REAL FFT STATE EXPOSED TO THE UI ----
-        private val _fftState = MutableStateFlow(FloatArray(64))
+        private const val FFT_BINS = 64
+
+        private val _fftState = MutableStateFlow(FloatArray(FFT_BINS))
         val fftState: StateFlow<FloatArray> = _fftState.asStateFlow()
 
-        // Whether real FFT is currently available (false = UI should fall back to fake animation)
         private val _hasRealFft = MutableStateFlow(false)
         val hasRealFft: StateFlow<Boolean> = _hasRealFft.asStateFlow()
-
-        private const val FFT_BINS = 64
 
         fun buildMediaItem(station: Station): MediaItem {
             val metadata = MediaMetadata.Builder()
@@ -76,7 +72,6 @@ class RadioPlaybackService : MediaSessionService() {
                 .build()
         }
 
-        // Called by the ViewModel if the UI needs to force a fallback (e.g. real FFT silent for >3s)
         fun enableFallbackFft() {
             _hasRealFft.value = false
         }
@@ -126,8 +121,6 @@ class RadioPlaybackService : MediaSessionService() {
             .build()
     }
 
-    // ---- AUDIO FX ----
-
     private fun initAudioEffects(audioSessionId: Int) {
         if (audioSessionId == C.AUDIO_SESSION_ID_UNSET || audioSessionId == 0) return
 
@@ -141,14 +134,12 @@ class RadioPlaybackService : MediaSessionService() {
             Log.e("RadioPlaybackService", "AudioFX init failed: ${e.message}")
         }
 
-        // Apply saved state
         val prefs = getSharedPreferences("aetherwave_prefs", Context.MODE_PRIVATE)
         val bandsJson = prefs.getString("eq_bands_json", null)
         val bands: FloatArray = try {
             if (!bandsJson.isNullOrEmpty())
                 Gson().fromJson(bandsJson, FloatArray::class.java) ?: FloatArray(5)
-            else
-                FloatArray(5)
+            else FloatArray(5)
         } catch (_: Exception) { FloatArray(5) }
 
         applyEqBands(bands)
@@ -195,19 +186,16 @@ class RadioPlaybackService : MediaSessionService() {
         } catch (e: Exception) { Log.e("RadioPlaybackService", "Virtualizer error: ${e.message}") }
     }
 
-    // ---- REAL FFT VISUALIZER ----
-
     private fun initVisualizer(audioSessionId: Int) {
         try {
             androidVisualizer?.release()
             androidVisualizer = Visualizer(audioSessionId).apply {
-                captureSize = Visualizer.getCaptureSizeRange()[1] // largest allowed
+                captureSize = Visualizer.getCaptureSizeRange()[1]
                 setDataCaptureListener(
                     object : Visualizer.OnDataCaptureListener {
                         override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, rate: Int) {}
+
                         override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, rate: Int) {
-                            fft ?: return
-                            override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, rate: Int) {
                             fft ?: return
                             // Skip FFT processing when the screen is off — saves battery.
                             val pm = getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
@@ -216,32 +204,24 @@ class RadioPlaybackService : MediaSessionService() {
                                 return
                             }
                             val n = fft.size / 2
-                            // ... rest of the FFT logic
-                            val n = fft.size / 2
                             val out = FloatArray(FFT_BINS)
                             for (i in 0 until FFT_BINS) {
-                                // log-spaced mapping so the high bands aren't dead
                                 val start = (Math.pow(i / FFT_BINS.toDouble(), 1.6) * (n - 1)).toInt()
                                 val end = (Math.pow((i + 1) / FFT_BINS.toDouble(), 1.6) * (n - 1)).toInt().coerceAtLeast(start + 1)
                                 var sum = 0f
                                 for (j in start until end.coerceAtMost(n)) {
-                                    val re = fft[j * 2].toInt(); val im = fft[j * 2 + 1].toInt()
+                                    val re = fft[j * 2].toInt()
+                                    val im = fft[j * 2 + 1].toInt()
                                     sum += kotlin.math.sqrt((re * re + im * im).toFloat())
                                 }
-                                // fixed reference level instead of per-frame max → stable scale
-                                val norm = (sum / (end - start).coerceAtLeast(1) / 48f).coerceIn(0f, 1f)
-                                fftSmoothed[i] = if (norm > fftSmoothed[i])
-                                    fftSmoothed[i] + (norm - fftSmoothed[i]) * 0.6f   // fast attack
-                                else
-                                    fftSmoothed[i] * 0.86f                            // slow decay
-                                out[i] = fftSmoothed[i]
+                                out[i] = (sum / (end - start).coerceAtLeast(1) / 48f).coerceIn(0f, 1f)
                             }
                             _fftState.value = out
                             _hasRealFft.value = out.any { it > 0.02f }
                         }
                     },
                     Visualizer.getMaxCaptureRate() / 2,
-                    false, // don't care about waveform
+                    false,
                     true
                 )
                 enabled = true
@@ -251,8 +231,6 @@ class RadioPlaybackService : MediaSessionService() {
             _hasRealFft.value = false
         }
     }
-
-    // ---- LIFECYCLE / INTENTS ----
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_SET_EQ) {
