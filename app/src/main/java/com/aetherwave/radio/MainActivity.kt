@@ -63,6 +63,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import android.app.TimePickerDialog
+import android.provider.Settings
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
+import com.aetherwave.radio.ui.components.WheelPicker
+import kotlin.math.abs
 import java.util.Calendar
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -532,11 +537,15 @@ fun RadioAppScreen(
                         contentPadding = PaddingValues(bottom = 120.dp)
                     ) {
                         itemsIndexed(stations, key = { _, s -> s.id }) { idx, st ->
+                            var dragYOffset by remember { mutableFloatStateOf(0f) }
                             Card(
                                 shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .animateItem()
+                                    .zIndex(if (abs(dragYOffset) > 1f) 1f else 0f)
+                                    .graphicsLayer { translationY = dragYOffset }
                                     .border(1.dp, Color(0x15FFFFFF), RoundedCornerShape(16.dp))
                             ) {
                                 Row(
@@ -571,24 +580,23 @@ fun RadioAppScreen(
                                         Text(st.group, fontSize = 11.sp, color = Color.Gray, maxLines = 1)
                                     }
 
-                                    var dragYOffset by remember { mutableFloatStateOf(0f) }
-                                    Box(
+                                        Box(
                                         modifier = Modifier
                                             .size(44.dp)
                                             .clip(RoundedCornerShape(12.dp))
-                                            .background(accentColor.copy(alpha = 0.15f))
+                                            .background(if (abs(dragYOffset) > 1f) accentColor else accentColor.copy(alpha = 0.15f))
                                             .pointerInput(st.id) {
                                                 detectDragGestures(
                                                     onDrag = { change, dragAmount ->
                                                         change.consume()
                                                         dragYOffset += dragAmount.y
                                                         val currentIndex = stations.indexOfFirst { it.id == st.id }
-                                                        if (dragYOffset > 42f && currentIndex in 0 until stations.size - 1) {
+                                                        if (dragYOffset > 40f && currentIndex in 0 until stations.size - 1) {
                                                             viewModel.reorderStations(currentIndex, currentIndex + 1)
-                                                            dragYOffset -= 42f
-                                                        } else if (dragYOffset < -42f && currentIndex > 0) {
+                                                            dragYOffset -= 76f
+                                                        } else if (dragYOffset < -40f && currentIndex > 0) {
                                                             viewModel.reorderStations(currentIndex, currentIndex - 1)
-                                                            dragYOffset += 42f
+                                                            dragYOffset += 76f
                                                         }
                                                     },
                                                     onDragEnd = { dragYOffset = 0f },
@@ -2111,7 +2119,7 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            listOf("Colors", "Font", "Presets").forEachIndexed { idx, label ->
+            listOf("Colors", "Font", "Deck", "Presets").forEachIndexed { idx, label ->
                 val sel = selectedTab == idx
                 Box(
                     modifier = Modifier
@@ -2212,8 +2220,16 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     }
                 }
 
+                // ============= DECK TAB =============
+                2 -> Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Full Player Deck Theme", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Separate from the app theme — colors only the expanded player.", fontSize = 11.sp, color = Color.Gray, fontFamily = activeFont)
+                    ModernColorRow(label = "Deck Accent", hex = uiState.deckAccentHex, fontStyle = editingFont, onTap = { pickerTarget = "deckAccent" })
+                    ModernColorRow(label = "Deck Background", hex = uiState.deckBackgroundHex, fontStyle = editingFont, onTap = { pickerTarget = "deckBg" })
+                }
+
                 // ============= PRESETS TAB =============
-                2 -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                3 -> Column((verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Quick Presets", fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = activeFont, color = MaterialTheme.colorScheme.onSurface)
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -2337,6 +2353,8 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
             "bg" -> editingBg
             "card" -> editingCard
             "font" -> if (editingFontColor.equals("auto", ignoreCase = true)) editingFontColor.let { "auto" } else editingFontColor
+            "deckAccent" -> uiState.deckAccentHex
+            "deckBg" -> uiState.deckBackgroundHex
             else -> "#000000"
         }
         val startHex = if (currentHex.equals("auto", ignoreCase = true)) "#F1F5F9" else currentHex
@@ -2357,6 +2375,8 @@ fun AppearanceSettingsSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     "bg" -> editingBg = newHex
                     "card" -> editingCard = newHex
                     "font" -> editingFontColor = newHex
+                    "deckAccent" -> viewModel.setDeckTheme(accentHex = newHex)
+                    "deckBg" -> viewModel.setDeckTheme(bgHex = newHex)
                 }
                 pickerTarget = null
             }
@@ -2915,6 +2935,7 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
         }
 
         // Genres List
+        var genreDrag by remember { mutableFloatStateOf(0f) }
         genres.forEachIndexed { index, g ->
             val isSelected = uiState.selectedGenresForDeletion.contains(g)
 
@@ -2923,6 +2944,9 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .animateItem()
+                    .zIndex(if (abs(genreDrag) > 1f) 1f else 0f)
+                    .graphicsLayer { translationY = genreDrag }
                     .clickable(enabled = uiState.isGenreSelectMode) {
                         viewModel.toggleGenreSelection(g)
                     }
@@ -2943,9 +2967,24 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     }
 
                     Text(g, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    if (!uiState.isGenreArrangeMode && !uiState.isGenreSelectMode) {
+                        var showRename by remember(g) { mutableStateOf(false) }
+                        var renameText by remember(g) { mutableStateOf(g) }
+                        IconButton(onClick = { showRename = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = "Rename", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        }
+                        if (showRename) {
+                            AlertDialog(
+                                onDismissRequest = { showRename = false },
+                                title = { Text("Rename Genre") },
+                                text = { OutlinedTextField(value = renameText, onValueChange = { renameText = it }, singleLine = true) },
+                                confirmButton = { Button(onClick = { viewModel.renameGenre(g, renameText); showRename = false }, colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16))) { Text("Save") } },
+                                dismissButton = { TextButton(onClick = { showRename = false }) { Text("Cancel") } }
+                            )
+                        }
+                    }
 
                     if (uiState.isGenreArrangeMode) {
-                        var dragYOffset by remember { mutableFloatStateOf(0f) }
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -2955,18 +2994,18 @@ fun GenreManagerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                                     detectDragGestures(
                                         onDrag = { change, dragAmount ->
                                             change.consume()
-                                            dragYOffset += dragAmount.y
+                                            genreDrag += dragAmount.y
                                             val currentIndex = genres.indexOf(g)
-                                            if (dragYOffset > 38f && currentIndex in 0 until genres.size - 1) {
+                                            if (genreDrag > 30f && currentIndex in 0 until genres.size - 1) {
                                                 viewModel.reorderGenres(currentIndex, currentIndex + 1)
-                                                dragYOffset -= 38f
-                                            } else if (dragYOffset < -38f && currentIndex > 0) {
+                                                genreDrag -= 68f
+                                            } else if (genreDrag < -30f && currentIndex > 0) {
                                                 viewModel.reorderGenres(currentIndex, currentIndex - 1)
-                                                dragYOffset += 38f
+                                                genreDrag += 68f
                                             }
                                         },
-                                        onDragEnd = { dragYOffset = 0f },
-                                        onDragCancel = { dragYOffset = 0f }
+                                        onDragEnd = { genreDrag = 0f },
+                                        onDragCancel = { genreDrag = 0f }
                                     )
                                 },
                             contentAlignment = Alignment.Center
@@ -3173,45 +3212,36 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     }
                 }
 
-                // Direct Hour Selector (1-12)
-                Text("Select Hour", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                // Scrollable wheel: hour / minute / AM-PM
                 Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    (1..12).forEach { h ->
-                        val isSel = hour12 == h
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(if (isSel) accentColor else Color(0x18FFFFFF))
-                                .clickable { updateAlarmTime(h, minute, isAm) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("$h", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface)
-                        }
-                    }
-                }
-
-                // Direct Minute Selector (:00, :05, :10, :15, :20, :25, :30, :35, :40, :45, :50, :55)
-                Text("Select Minute", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
-                        val isSel = minute == m
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isSel) accentColor else Color(0x18FFFFFF))
-                                .clickable { updateAlarmTime(hour12, m, isAm) }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        ) {
-                            Text(String.format(":%02d", m), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = if (isSel) Color(0xFF090D16) else MaterialTheme.colorScheme.onSurface, fontFamily = FontFamily.Monospace)
-                        }
-                    }
+                    WheelPicker(
+                        items = (1..12).map { "%02d".format(it) },
+                        selectedIndex = hour12 - 1,
+                        onItemSelected = { updateAlarmTime(it + 1, minute, isAm) },
+                        accentColor = accentColor,
+                        modifier = Modifier.width(84.dp)
+                    )
+                    Text(":", fontSize = 28.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 6.dp))
+                    WheelPicker(
+                        items = (0..59).map { "%02d".format(it) },
+                        selectedIndex = minute,
+                        onItemSelected = { updateAlarmTime(hour12, it, isAm) },
+                        accentColor = accentColor,
+                        modifier = Modifier.width(84.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    WheelPicker(
+                        items = listOf("AM", "PM"),
+                        selectedIndex = if (isAm) 0 else 1,
+                        onItemSelected = { updateAlarmTime(hour12, minute, it == 0) },
+                        accentColor = accentColor,
+                        modifier = Modifier.width(76.dp)
+                    )
                 }
 
                 // Station Selector Card
@@ -3279,6 +3309,24 @@ fun AlarmClockSubPage(viewModel: RadioViewModel, accentColor: Color) {
                     }
                 }
 
+                // Survive Doze / sleep mode
+                OutlinedButton(
+                    onClick = {
+                        try {
+                            context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + context.packageName)))
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "Please allow unrestricted battery for AetherWave in system settings", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)
+                ) {
+                    Icon(Icons.Default.BatterySaver, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Allow Background (Bypass Sleep Mode)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+                
                 // Test Alarm in 5 Seconds Button
                 Button(
                     onClick = {
@@ -3748,6 +3796,43 @@ fun SleepTimerDialog(
                     }
                 } else {
                     Text("Choose exactly when the radio should stop.", fontSize = 12.sp, color = Color.Gray, textAlign = TextAlign.Center)
+
+                    var sleepHours by remember { mutableIntStateOf(0) }
+                    var sleepMinutes by remember { mutableIntStateOf(30) }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        WheelPicker(
+                            items = (0..5).map { "$it h" },
+                            selectedIndex = sleepHours,
+                            onItemSelected = { sleepHours = it },
+                            accentColor = accentColor,
+                            modifier = Modifier.width(84.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        WheelPicker(
+                            items = (0..59).map { "%02d m".format(it) },
+                            selectedIndex = sleepMinutes,
+                            onItemSelected = { sleepMinutes = it },
+                            accentColor = accentColor,
+                            modifier = Modifier.width(84.dp)
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            val total = sleepHours * 60 + sleepMinutes
+                            if (total > 0) { viewModel.sleepTimerManager.startTimer(total, fadeOut = true); onClose() }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color(0xFF090D16)),
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Text("Start Timer (${sleepHours}h ${"%02d".format(sleepMinutes)}m)", fontWeight = FontWeight.Bold)
+                    }
 
                     Button(
                         onClick = {
