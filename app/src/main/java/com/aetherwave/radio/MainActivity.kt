@@ -2762,18 +2762,23 @@ fun EqualizerSubPage(viewModel: RadioViewModel, accentColor: Color) {
                             Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0x40FFFFFF)))
                             
                             // Thumb
+                            val currentGain by rememberUpdatedState(gain)
+                            var dragAccum by remember(index) { mutableFloatStateOf(0f) }
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(24.dp)
-                                    .offset(y = (-50 * (gain / 12f)).dp) // Moves thumb up/down
+                                    .offset(y = (-50 * (gain / 12f)).dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(accentColor)
-                                    .pointerInput(Unit) {
-                                        detectVerticalDragGestures { change, dragAmount ->
+                                    .pointerInput(index) {
+                                        detectVerticalDragGestures(
+                                            onDragEnd = { dragAccum = 0f },
+                                            onDragCancel = { dragAccum = 0f }
+                                        ) { change, dragAmount ->
                                             change.consume()
-                                            val delta = -dragAmount / 4f // Sensitivity
-                                            viewModel.setEqBand(index, gain + delta)
+                                            dragAccum -= dragAmount / 3.5f
+                                            viewModel.setEqBand(index, currentGain + dragAccum)
                                         }
                                     }
                             )
